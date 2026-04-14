@@ -1,0 +1,42 @@
+import streamlit as st
+from gtts import gTTS
+from pydub import AudioSegment
+import io
+
+# 網頁標題
+st.title("🇪🇸 西班牙語學習助手")
+st.subheader("自動生成短文與音檔")
+
+# 使用者輸入介面
+level = st.selectbox("選擇西班牙文等級", ["A1 (初級)", "A2 (基礎)", "B1 (中級)"])
+word_count = st.slider("大約字數", 50, 500, 150)
+speed = st.slider("語速 (0.5 為極慢, 1.0 為正常)", 0.5, 1.0, 0.7)
+topic = st.text_input("想要什麼主題？", "日常工作與生活")
+
+if st.button("生成文章與音檔"):
+    # 這裡未來可以對接 AI 生成文章，目前我們先用一個範本預覽流程
+    # 提示：你可以把 Gemini 生成的文章貼在這裡
+    content = f"這是關於 {topic} 的 {level} 文章..." 
+    
+    st.write("### 生成的文章內容：")
+    st.info("提示：由於目前是簡易版，請將 Gemini 生成的文章貼到下方框內來轉語音。")
+    user_text = st.text_area("請貼上生成的文章內容：", height=200)
+
+    if user_text:
+        # 1. 生成 TTS
+        tts = gTTS(text=user_text, lang='es')
+        mp3_fp = io.BytesIO()
+        tts.write_to_fp(mp3_fp)
+        mp3_fp.seek(0)
+        
+        # 2. 調整語速 (使用 pydub)
+        audio = AudioSegment.from_file(mp3_fp, format="mp3")
+        new_sample_rate = int(audio.frame_rate * speed)
+        final_audio = audio._spawn(audio.raw_data, overrides={'frame_rate': new_sample_rate})
+        final_audio = final_audio.set_frame_rate(audio.frame_rate)
+        
+        # 3. 輸出音檔
+        out_fp = io.BytesIO()
+        final_audio.export(out_fp, format="mp3")
+        st.audio(out_fp)
+        st.success(f"已生成 {speed} 倍速音檔！")
