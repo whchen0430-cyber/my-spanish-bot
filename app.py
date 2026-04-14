@@ -7,7 +7,7 @@ import io
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error("❌ 找不到 API Key！請到 Manage app > Settings > Secrets 填入 GEMINI_API_KEY。")
 
