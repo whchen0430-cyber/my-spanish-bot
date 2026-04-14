@@ -1,3 +1,9 @@
+import sys
+try:
+    import audioop
+except ImportError:
+    import audioop_lpm as audioop
+    sys.modules["audioop"] = audioop
 import streamlit as st
 from gtts import gTTS
 from pydub import AudioSegment
