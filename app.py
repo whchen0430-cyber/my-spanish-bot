@@ -3,20 +3,19 @@ from gtts import gTTS
 import google.generativeai as genai
 import io
 
-# 1. 讀取 Secrets 裡的 API Key
+# 1. 配置 Gemini (Gemini 3 Flash Preview)
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
     
-    # 使用目前最穩定的 1.5 Flash 最新版本名稱
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
+    # 使用你在 AI Studio 看到的最新模型名稱
+    model = genai.GenerativeModel('gemini-3-flash-preview') 
 except Exception as e:
-    st.error(f"❌ 模型配置出錯：{e}")
+    st.error(f"❌ 大腦連接失敗：請確認 Secrets 內的 API KEY 是否正確。錯誤訊息：{e}")
 
 # 2. 網頁介面設定
-st.set_page_config(page_title="西語全能家教", page_icon="🇪🇸", layout="wide")
-st.title("🇪🇸 西語全能一鍵生成家教")
+st.set_page_config(page_title="西語一鍵家教 (Gemini 3)", page_icon="🇪🇸", layout="wide")
+st.title("🇪🇸 西語全能一鍵生成家教 (Gemini 3 Flash)")
 
 # 側邊欄設定
 st.sidebar.header("學習設定")
@@ -24,15 +23,15 @@ level = st.sidebar.selectbox("西班牙文等級", ["A1 初級", "A2 基礎", "B
 is_slow = st.sidebar.checkbox("使用慢速朗讀 (Slow Mode)", value=True)
 
 # 主畫面
-topic = st.text_input("想要練習什麼主題？", placeholder="例如：在馬德里點餐、我的週末計畫")
+topic = st.text_input("想要練習什麼主題？", placeholder="例如：介紹我的工作、規劃一趟日本旅行")
 
 if st.button("🚀 生成完整教材"):
     if not topic:
         st.warning("請輸入主題喔！")
     else:
-        with st.spinner('正在為您編寫教材並生成語音中...'):
+        with st.spinner('Gemini 3 正在運用最強大腦編寫教材中...'):
             try:
-                # 定義 Prompt
+                # 定義 Prompt (提示詞)
                 prompt = f"""
                 請作為一名專業的西班牙語老師，針對主題「{topic}」編寫教材：
                 1. 等級：{level}。
@@ -49,20 +48,22 @@ if st.button("🚀 生成完整教材"):
                 (重點單字與文法)
                 """
                 
+                # 呼叫 Gemini 3 生成內容
                 response = model.generate_content(prompt)
                 full_text = response.text
                 
                 # 解析內容
                 try:
-                    spanish_part = full_text.split("[CHINESE]")[0].replace("[SPANISH]", "").strip()
-                    other_part = full_text.split("[CHINESE]")[1]
-                    chinese_part = other_part.split("[NOTES]")[0].strip()
-                    notes_part = other_part.split("[NOTES]")[1].strip()
+                    parts = full_text.split("[CHINESE]")
+                    spanish_part = parts[0].replace("[SPANISH]", "").strip()
+                    other_parts = parts[1].split("[NOTES]")
+                    chinese_part = other_parts[0].strip()
+                    notes_part = other_parts[1].strip()
                 except:
-                    # 如果 AI 沒有完全遵守格式，則顯示全文
-                    st.warning("格式解析異常，直接顯示生成內容：")
-                    st.write(full_text)
-                    spanish_part = full_text # 確保語音還能抓到內容
+                    # 容錯機制
+                    spanish_part = full_text
+                    chinese_part = "解析失敗，請看原文"
+                    notes_part = "解析失敗"
 
                 # --- 顯示結果介面 ---
                 col1, col2 = st.columns(2)
