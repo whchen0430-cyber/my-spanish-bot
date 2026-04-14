@@ -2,3 +2,4 @@ streamlit
 google-generativeai
 gTTS
 pydub
+audioop-lpm
