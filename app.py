@@ -1,66 +1,86 @@
-import sys
-try:
-    import audioop
-except ImportError:
-    import audioop_lpm as audioop
-    sys.modules["audioop"] = audioop
 import streamlit as st
 from gtts import gTTS
-from pydub import AudioSegment
 import google.generativeai as genai
 import io
 
-# 1. 讀取保險箱裡的 API Key
-API_KEY = st.secrets["GEMINI_API_KEY"]
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+# 1. 讀取 Secrets 裡的 API Key
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=API_KEY)
+    model = genai.GenerativeModel('gemini-pro')
+except Exception as e:
+    st.error("❌ 找不到 API Key！請到 Manage app > Settings > Secrets 填入 GEMINI_API_KEY。")
 
 # 2. 網頁介面設定
-st.set_page_config(page_title="西語一鍵生成", page_icon="🇪🇸")
-st.title("🇪🇸 西語自動化學習機器人")
+st.set_page_config(page_title="西語全能家教", page_icon="🇪🇸", layout="wide")
+st.title("🇪🇸 西語全能一鍵生成家教")
 
-# 側邊欄：設定選項
+# 側邊欄設定
 st.sidebar.header("學習設定")
 level = st.sidebar.selectbox("西班牙文等級", ["A1 初級", "A2 基礎", "B1 中級", "B2 進階"])
-word_count = st.sidebar.slider("文章大約字數", 50, 400, 150)
-speed = st.sidebar.slider("調整語速 (0.7 最適中)", 0.5, 1.0, 0.7)
+is_slow = st.sidebar.checkbox("使用慢速朗讀 (Slow Mode)", value=True)
 
-# 主畫面：輸入主題
-topic = st.text_input("想練習什麼主題？", placeholder="例如：在超市買水果、描述我的周末...")
+# 主畫面
+topic = st.text_input("想要練習什麼主題？", placeholder="例如：在馬德里點餐、我的週末計畫")
 
-if st.button("🚀 生成文章與音檔"):
+if st.button("🚀 生成完整教材"):
     if not topic:
-        st.warning("請輸入一個主題喔！")
+        st.warning("請輸入主題喔！")
     else:
-        with st.spinner('Gemini 正在構思文章並錄音...'):
+        with st.spinner('正在為您編寫教材並生成語音中...'):
             try:
-                # 叫 AI 寫作
-                prompt = f"請用西班牙文寫一篇關於 {topic} 的文章，適合 {level} 等級，長度約 {word_count} 字。內容要實用。請只給出西班牙文內容，不要附帶翻譯或解釋。"
+                # 定義 Prompt
+                prompt = f"""
+                請作為一名專業的西班牙語老師，針對主題「{topic}」編寫教材：
+                1. 等級：{level}。
+                2. 文章：請寫一篇約 150 字的西班牙文短文。
+                3. 翻譯：提供該文章的繁體中文翻譯。
+                4. 重點：列出 3 個重點單字（含解釋）與 1 個關鍵文法說明。
+                
+                請嚴格遵守以下格式回報，不要有額外開場白：
+                [SPANISH]
+                (西班牙文文章)
+                [CHINESE]
+                (中文翻譯)
+                [NOTES]
+                (重點單字與文法)
+                """
+                
                 response = model.generate_content(prompt)
-                spanish_text = response.text
+                full_text = response.text
                 
-                # 顯示文章
-                st.success(f"✅ 已生成適合 {level} 的文章！")
-                st.text_area("文章內容：", value=spanish_text, height=250)
+                # 解析內容
+                try:
+                    spanish_part = full_text.split("[CHINESE]")[0].replace("[SPANISH]", "").strip()
+                    other_part = full_text.split("[CHINESE]")[1]
+                    chinese_part = other_part.split("[NOTES]")[0].strip()
+                    notes_part = other_part.split("[NOTES]")[1].strip()
+                except:
+                    # 如果 AI 沒有完全遵守格式，則顯示全文
+                    st.warning("格式解析異常，直接顯示生成內容：")
+                    st.write(full_text)
+                    spanish_part = full_text # 確保語音還能抓到內容
+
+                # --- 顯示結果介面 ---
+                col1, col2 = st.columns(2)
                 
-                # 轉成語音 (gTTS)
-                tts = gTTS(text=spanish_text, lang='es')
-                mp3_fp = io.BytesIO()
-                tts.write_to_fp(mp3_fp)
-                mp3_fp.seek(0)
+                with col1:
+                    st.subheader("🇪🇸 西班牙文原文")
+                    st.info(spanish_part)
+                    
+                    # 生成音檔
+                    tts = gTTS(text=spanish_part, lang='es', slow=is_slow)
+                    mp3_fp = io.BytesIO()
+                    tts.write_to_fp(mp3_fp)
+                    st.audio(mp3_fp)
+
+                with col2:
+                    st.subheader("🇹🇼 中文對照翻譯")
+                    st.write(chinese_part)
                 
-                # 調整語速 (pydub)
-                audio = AudioSegment.from_file(mp3_fp, format="mp3")
-                new_sample_rate = int(audio.frame_rate * speed)
-                final_audio = audio._spawn(audio.raw_data, overrides={'frame_rate': new_sample_rate})
-                final_audio = final_audio.set_frame_rate(audio.frame_rate)
-                
-                # 輸出音檔
-                out_fp = io.BytesIO()
-                final_audio.export(out_fp, format="mp3")
-                
-                st.audio(out_fp)
-                st.download_button("📥 下載此音檔 (MP3)", out_fp, file_name=f"spanish_{topic}.mp3")
+                st.divider()
+                st.subheader("📝 重點單字與文法解說")
+                st.success(notes_part)
                 
             except Exception as e:
                 st.error(f"發生錯誤：{e}")
