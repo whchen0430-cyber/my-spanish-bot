@@ -9,7 +9,7 @@ try:
     genai.configure(api_key=API_KEY)
     
     # 使用目前最穩定的 1.5 Flash 最新版本名稱
-    model = genai.GenerativeModel('models/gemini-1.5-flash-latest') 
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
 except Exception as e:
     st.error(f"❌ 模型配置出錯：{e}")
