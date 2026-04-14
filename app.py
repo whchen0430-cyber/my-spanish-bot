@@ -7,9 +7,12 @@ import io
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # 使用目前最穩定的 1.5 Flash 最新版本名稱
+    model = genai.GenerativeModel('models/gemini-1.5-flash-latest') 
+    
 except Exception as e:
-    st.error("❌ 找不到 API Key！請到 Manage app > Settings > Secrets 填入 GEMINI_API_KEY。")
+    st.error(f"❌ 模型配置出錯：{e}")
 
 # 2. 網頁介面設定
 st.set_page_config(page_title="西語全能家教", page_icon="🇪🇸", layout="wide")
