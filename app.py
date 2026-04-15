@@ -5,7 +5,7 @@ import asyncio
 import io
 import re
 
-# 1. 配置 Gemini 3 Flash (已為您記住此模型)
+# 1. 配置 Gemini 3 Flash
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
@@ -14,8 +14,8 @@ except Exception as e:
     st.error(f"❌ 連接失敗：{e}")
 
 # 2. 網頁介面設定
-st.set_page_config(page_title="西語全能家教 2.0", page_icon="🇪🇸", layout="wide")
-st.title("🇪🇸 西語全能家教 2.1：單一音檔對話版")
+st.set_page_config(page_title="西語全能家教 2.2", page_icon="🇪🇸", layout="wide")
+st.title("🇪🇸 西語全能家教 2.2：精準格式優化版")
 
 # 側邊欄設定
 st.sidebar.header("學習設定")
@@ -32,7 +32,7 @@ if format_type == "雙人對話":
 else:
     voice_main = st.sidebar.selectbox("主要音色", ["es-ES-ElviraNeural", "es-ES-AlvaroNeural"])
 
-# 3. 非同步語音生成函數 (修改為支援合併)
+# 3. 語音生成函數
 async def get_audio_clip(text, voice, rate):
     rate_str = f"{rate:+d}%"
     communicate = edge_tts.Communicate(text, voice, rate=rate_str)
@@ -43,29 +43,39 @@ async def get_audio_clip(text, voice, rate):
     return audio_data
 
 # 4. 主畫面
-topic = st.text_input("想練習的主題？", placeholder="例如：討論離岸風電與太陽能的未來...")
+topic = st.text_input("想練習的主題？", placeholder="例如：描述我的日常生活、離岸風電的優點...")
 
 if st.button("🚀 生成精緻教材"):
     if not topic:
         st.warning("請輸入主題！")
     else:
-        with st.spinner('Gemini 3 正在為您編排劇本並錄音...'):
+        with st.spinner('正在精準編排教材內容...'):
             try:
-                # 強化 Prompt：要求強制換行
+                # 這裡加強了對「短文」與「對話」的區分指令
+                if format_type == "一般短文":
+                    style_instruction = "這必須是一篇描述性的短文，絕對不要出現 A: B: 的對話形式。"
+                else:
+                    style_instruction = "這必須是兩個人之間的對話。請嚴格使用 A: 和 B: 作為每句話開頭，且 A 與 B 的對話必須換行。"
+
                 prompt = f"""
                 請作為專業西語老師，針對「{topic}」編寫教材。
-                等級：{level}，形式：{format_type}，字數約 {word_count} 字。
-                如果是對話，請嚴格遵守：
-                1. A: 和 B: 之後必須接說話內容。
-                2. 每一個說話者結束後必須「換行」，不得連在一起。
-                3. 格式格式：
+                等級：{level}，字數約 {word_count} 字。
+                文章形式：{format_type}。
+                指令：{style_instruction}
+                
+                關於翻譯的嚴格要求：
+                1. 中文翻譯必須與西班牙文原文的格式「完全對應」。
+                2. 如果原文有 A: 和 B:，中文翻譯也必須在每一句開頭加上 A: 和 B: 並換行。
+                
+                格式回報：
                 [SPANISH]
-                (文章內容)
+                (西班牙文內容)
                 [CHINESE]
-                (中文翻譯)
+                (中文翻譯內容)
                 [NOTES]
-                (5個重點單字與1個文法)
+                (5個重點單字與1個文法說明)
                 """
+                
                 response = model.generate_content(prompt)
                 full_text = response.text
                 
@@ -78,11 +88,9 @@ if st.button("🚀 生成精緻教材"):
                 
                 with col1:
                     st.subheader("🇪🇸 西班牙文原文")
-                    # 優化排版：確保 A: B: 換行並加粗
-                    formatted_spanish = re.sub(r'(A:|B:)', r'\n**\1**', spanish_part)
-                    st.markdown(formatted_spanish)
+                    # 強制換行與加粗
+                    st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', spanish_part))
                     
-                    # --- 音檔合併邏輯 ---
                     combined_audio = b""
                     lines = [line.strip() for line in spanish_part.split('\n') if line.strip()]
                     
@@ -94,18 +102,20 @@ if st.button("🚀 生成精緻教材"):
                             elif line.startswith("B:"):
                                 clip = asyncio.run(get_audio_clip(line.replace("B:", ""), voice_b, speed_val))
                                 combined_audio += clip
+                            else: # 防呆：如果沒標 A/B 卻選對話，用預設聲音
+                                clip = asyncio.run(get_audio_clip(line, voice_a, speed_val))
+                                combined_audio += clip
                         else:
                             clip = asyncio.run(get_audio_clip(line, voice_main, speed_val))
                             combined_audio += clip
                     
                     if combined_audio:
                         st.audio(combined_audio, format="audio/mp3")
-                        st.download_button("📥 下載完整音檔", combined_audio, file_name=f"{topic}.mp3")
 
                 with col2:
                     st.subheader("🇹🇼 中文對照翻譯")
-                    formatted_chinese = re.sub(r'(A:|B:)', r'\n**\1**', chinese_part)
-                    st.markdown(formatted_chinese)
+                    # 同樣對中文翻譯進行強制換行處理
+                    st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', chinese_part))
                 
                 st.divider()
                 st.subheader("📝 重點筆記")
