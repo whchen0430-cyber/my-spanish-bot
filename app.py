@@ -16,7 +16,7 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- 2. 網頁基礎配置 ---
-st.set_page_config(page_title="西語全能家教 3.4", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 3.5", page_icon="🇪🇸", layout="wide")
 
 # --- 3. 配置 Gemini 3 Flash Preview ---
 try:
@@ -51,14 +51,22 @@ st.sidebar.divider()
 st.sidebar.subheader("🎙️ 語音參數")
 speed_val = st.sidebar.slider("語速調整 (%)", -50, 20, -10, step=5)
 
+# 音色清單定義
+mx_female = "es-MX-DaliaNeural"
+mx_male = "es-MX-JorgeNeural"
+es_female = "es-ES-ElviraNeural"
+es_male = "es-ES-AlvaroNeural"
+
 if format_type == "雙人對話":
-    voice_a = st.sidebar.selectbox("角色 A (男聲)", ["es-ES-AlvaroNeural", "es-MX-JorgeNeural"])
-    voice_b = st.sidebar.selectbox("角色 B (女聲)", ["es-ES-ElviraNeural", "es-MX-DaliaNeural"])
+    voice_a = st.sidebar.selectbox("角色 A (男聲)", [es_male, mx_male], format_func=lambda x: "西班牙 (Alvaro)" if "ES" in x else "墨西哥 (Jorge)")
+    voice_b = st.sidebar.selectbox("角色 B (女聲)", [es_female, mx_female], format_func=lambda x: "西班牙 (Elvira)" if "ES" in x else "墨西哥 (Dalia)")
 else:
-    voice_main = st.sidebar.selectbox("主要音色", ["es-ES-ElviraNeural", "es-ES-AlvaroNeural"])
+    # 這裡補回了墨西哥音色供一般短文使用
+    voice_main = st.sidebar.selectbox("主要音色", [es_female, es_male, mx_female, mx_male], 
+                                     format_func=lambda x: f"{'西班牙' if 'ES' in x else '墨西哥'} - {'女聲' if 'Dalia' in x or 'Elvira' in x else '男聲'}")
 
 st.sidebar.divider()
-st.sidebar.info("💡 設定完成後，請於右側輸入主題並點擊生成。")
+st.sidebar.info("💡 設定完成後，請於右側分頁輸入主題並點擊生成。")
 
 # --- 6. 主畫面分頁 ---
 tab1, tab2 = st.tabs(["📚 今日教材", "📝 挑戰測驗"])
@@ -66,7 +74,7 @@ tab1, tab2 = st.tabs(["📚 今日教材", "📝 挑戰測驗"])
 # ----- Tab 1: 今日教材 -----
 with tab1:
     st.title("🇪🇸 西語全能一鍵家教")
-    topic = st.text_input("想練習的主題？", key="topic_study", placeholder="例如：討論離岸風電計畫、西班牙美食...")
+    topic = st.text_input("想練習什麼主題？", key="topic_study", placeholder="例如：討論離岸風電計畫、墨西哥旅遊...")
 
     if st.button("🚀 生成精製教材"):
         if not topic:
@@ -85,9 +93,9 @@ with tab1:
                        - 5 個文章重點單字（西文、繁中解釋及例句）。
                        - 1 個核心文法解說。
                     
-                    格式：
+                    格式規範：
                     [SPANISH]
-                    (西文原文)
+                    (西文原文內容)
                     [CHINESE]
                     (繁體中文翻譯)
                     [NOTES]
@@ -97,69 +105,10 @@ with tab1:
                     full_text = response.text
                     
                     # 分割內容
-                    spanish_part = full_text.split("[CHINESE]")[0].replace("[SPANISH]", "").strip()
-                    chinese_part = full_text.split("[CHINESE]")[1].split("[NOTES]")[0].strip()
-                    notes_part = full_text.split("[NOTES]")[1].strip()
+                    parts_chinese = full_text.split("[CHINESE]")
+                    spanish_part = parts_chinese[0].replace("[SPANISH]", "").strip()
+                    parts_notes = parts_chinese[1].split("[NOTES]")
+                    chinese_part = parts_notes[0].strip()
+                    notes_part = parts_notes[1].strip()
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.subheader("🇪🇸 西班牙文原文")
-                        st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', spanish_part))
-                        # 音檔合併
-                        combined_audio = b""
-                        lines = [line.strip() for line in spanish_part.split('\n') if line.strip()]
-                        for line in lines:
-                            v = voice_a if (format_type == "雙人對話" and line.startswith("A:")) else \
-                                (voice_b if (format_type == "雙人對話" and line.startswith("B:")) else \
-                                (voice_main if format_type == "一般短文" else voice_a))
-                            clip = asyncio.run(get_audio_clip(line.replace("A:","").replace("B:",""), v, speed_val))
-                            combined_audio += clip
-                        if combined_audio: st.audio(combined_audio, format="audio/mp3")
-
-                    with col2:
-                        st.subheader("🇹🇼 繁體中文翻譯")
-                        st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', chinese_part))
-                    
-                    st.divider()
-                    st.subheader("💡 重點單字與文法解說")
-                    st.success(notes_part)
-                except Exception as e:
-                    st.error(f"發生錯誤：{e}")
-
-# ----- Tab 2: 挑戰測驗 -----
-with tab2:
-    st.title("📝 西語實力檢測站")
-    quiz_topic = st.text_input("測驗主題？", key="topic_quiz", placeholder="例如：能源單字測驗...")
-    
-    if st.button("🧠 生成全西語測驗"):
-        if not quiz_topic:
-            st.warning("請輸入主題！")
-        else:
-            with st.spinner('正在命題中...'):
-                try:
-                    quiz_prompt = f"""
-                    作為專業西語老師，針對「{quiz_topic}」與等級「{level}」設計測驗。
-                    題目與選項必須全部使用西班牙文，解析與答案使用繁體中文。
-                    包含：10 題單字選擇題、1 篇短文、5 題閱讀理解。
-                    格式：[QUIZ_VOCAB]...[QUIZ_READING]...[ANSWERS]...
-                    """
-                    quiz_response = model.generate_content(quiz_prompt)
-                    quiz_text = quiz_response.text
-                    
-                    try:
-                        vocab_q = quiz_text.split("[QUIZ_READING]")[0].replace("[QUIZ_VOCAB]", "").strip()
-                        reading_q = quiz_text.split("[ANSWERS]")[0].split("[QUIZ_READING]")[1].strip()
-                        answers = quiz_text.split("[ANSWERS]")[1].strip()
-                        
-                        st.subheader("Parte 1: Vocabulario (全西文)")
-                        st.markdown(vocab_q)
-                        st.divider()
-                        st.subheader("Parte 2: Comprensión de lectura (全西文)")
-                        st.markdown(reading_q)
-                        st.divider()
-                        with st.expander("👉 查看繁體中文答案解析"):
-                            st.info(answers)
-                    except:
-                        st.write(quiz_text) 
-                except Exception as e:
-                    st.error(f"測驗生成失敗：{e}")
+                    col1, col2 = st.columns(2
