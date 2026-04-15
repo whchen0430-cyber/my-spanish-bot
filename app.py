@@ -16,7 +16,7 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- 2. 網頁基礎配置 ---
-st.set_page_config(page_title="西語全能家教 3.5", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 3.6", page_icon="🇪🇸", layout="wide")
 
 # --- 3. 配置 Gemini 3 Flash Preview ---
 try:
@@ -26,8 +26,10 @@ try:
 except Exception as e:
     st.error(f"❌ 大腦連接失敗：{e}")
 
-# --- 4. 語音生成函數 ---
+# --- 4. 語音生成函數 (優化語速處理) ---
 async def get_audio_clip(text, voice, rate):
+    # edge-tts 的 rate 格式為 "+N%" 或 "-N%"
+    # 這裡確保傳入的是帶正負號的字串
     rate_str = f"{rate:+d}%"
     communicate = edge_tts.Communicate(text, voice, rate=rate_str)
     audio_data = b""
@@ -47,11 +49,16 @@ word_count = st.sidebar.slider("文章總字數", 100, 500, 200)
 
 st.sidebar.divider()
 
-# 語音詳細設定
+# 語音詳細設定 (修正語速標籤與邏輯)
 st.sidebar.subheader("🎙️ 語音參數")
-speed_val = st.sidebar.slider("語速調整 (%)", -50, 20, -10, step=5)
+# 將 Slider 標籤更換為更直覺的百分比說明
+speed_val = st.sidebar.select_slider(
+    "語速選擇",
+    options=[-50, -25, -10, 0, 10, 20],
+    value=-25,
+    format_func=lambda x: f"極慢 (0.5x)" if x==-50 else (f"舒適 (0.75x)" if x==-25 else (f"正常 (1.0x)" if x==0 else f"稍快 ({x}%)"))
+)
 
-# 音色清單定義
 mx_female = "es-MX-DaliaNeural"
 mx_male = "es-MX-JorgeNeural"
 es_female = "es-ES-ElviraNeural"
@@ -61,12 +68,11 @@ if format_type == "雙人對話":
     voice_a = st.sidebar.selectbox("角色 A (男聲)", [es_male, mx_male], format_func=lambda x: "西班牙 (Alvaro)" if "ES" in x else "墨西哥 (Jorge)")
     voice_b = st.sidebar.selectbox("角色 B (女聲)", [es_female, mx_female], format_func=lambda x: "西班牙 (Elvira)" if "ES" in x else "墨西哥 (Dalia)")
 else:
-    # 這裡補回了墨西哥音色供一般短文使用
     voice_main = st.sidebar.selectbox("主要音色", [es_female, es_male, mx_female, mx_male], 
                                      format_func=lambda x: f"{'西班牙' if 'ES' in x else '墨西哥'} - {'女聲' if 'Dalia' in x or 'Elvira' in x else '男聲'}")
 
 st.sidebar.divider()
-st.sidebar.info("💡 設定完成後，請於右側分頁輸入主題並點擊生成。")
+st.sidebar.info("💡 語速已修正。建議使用「舒適 (0.75x)」進行初次聽力練習。")
 
 # --- 6. 主畫面分頁 ---
 tab1, tab2 = st.tabs(["📚 今日教材", "📝 挑戰測驗"])
@@ -74,37 +80,26 @@ tab1, tab2 = st.tabs(["📚 今日教材", "📝 挑戰測驗"])
 # ----- Tab 1: 今日教材 -----
 with tab1:
     st.title("🇪🇸 西語全能一鍵家教")
-    topic = st.text_input("想練習什麼主題？", key="topic_study", placeholder="例如：討論離岸風電計畫、墨西哥旅遊...")
+    topic = st.text_input("想練習什麼主題？", key="topic_study", placeholder="例如：描述離岸風電計畫...")
 
     if st.button("🚀 生成精製教材"):
         if not topic:
             st.warning("請先輸入主題喔！")
         else:
-            with st.spinner('Gemini 3 正在構思教材與重點筆記...'):
+            with st.spinner('正在準備教材、翻譯與重點筆記...'):
                 try:
-                    style_instruction = "一般短文" if format_type == "一般短文" else "雙人對話並標註 A: 與 B:，每句換行"
+                    style_instruction = "一般短文" if format_type == "一般短文" else "雙人對話標註 A: 與 B:，每句必須換行"
                     prompt = f"""
                     請作為專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。
                     形式：{style_instruction}。
-                    
                     要求：
                     1. 翻譯與筆記必須使用「繁體中文」(Taiwan Traditional Chinese)。
-                    2. 重點筆記 [NOTES] 必須包含：
-                       - 5 個文章重點單字（西文、繁中解釋及例句）。
-                       - 1 個核心文法解說。
-                    
-                    格式規範：
-                    [SPANISH]
-                    (西文原文內容)
-                    [CHINESE]
-                    (繁體中文翻譯)
-                    [NOTES]
-                    (繁體中文單字與文法解說)
+                    2. 重點筆記 [NOTES] 必須包含：5個重點單字(含西文、繁中解釋及例句)與1個核心文法解說。
+                    格式：[SPANISH]原文[CHINESE]繁中翻譯[NOTES]繁中筆記
                     """
                     response = model.generate_content(prompt)
                     full_text = response.text
                     
-                    # 分割內容
                     parts_chinese = full_text.split("[CHINESE]")
                     spanish_part = parts_chinese[0].replace("[SPANISH]", "").strip()
                     parts_notes = parts_chinese[1].split("[NOTES]")
@@ -115,15 +110,12 @@ with tab1:
                     with col1:
                         st.subheader("🇪🇸 西班牙文原文")
                         st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', spanish_part))
-                        # 音檔合併
                         combined_audio = b""
                         lines = [line.strip() for line in spanish_part.split('\n') if line.strip()]
                         for line in lines:
-                            if format_type == "雙人對話":
-                                v = voice_a if line.startswith("A:") else voice_b
-                            else:
-                                v = voice_main
-                            
+                            v = voice_a if (format_type == "雙人對話" and line.startswith("A:")) else \
+                                (voice_b if (format_type == "雙人對話" and line.startswith("B:")) else \
+                                (voice_main if format_type == "一般短文" else voice_a))
                             clip = asyncio.run(get_audio_clip(line.replace("A:","").replace("B:",""), v, speed_val))
                             combined_audio += clip
                         if combined_audio: st.audio(combined_audio, format="audio/mp3")
@@ -141,39 +133,27 @@ with tab1:
 # ----- Tab 2: 挑戰測驗 -----
 with tab2:
     st.title("📝 西語實力檢測站")
-    quiz_topic = st.text_input("測驗主題？", key="topic_quiz", placeholder="例如：能源相關單字測驗...")
-    
+    quiz_topic = st.text_input("測驗主題？", key="topic_quiz")
     if st.button("🧠 生成全西語測驗"):
         if not quiz_topic:
             st.warning("請輸入主題！")
         else:
             with st.spinner('正在命題中...'):
                 try:
-                    quiz_prompt = f"""
-                    作為專業西語老師，針對「{quiz_topic}」與等級「{level}」設計測驗。
-                    要求：
-                    1. 題目與選項必須全部使用西班牙文。
-                    2. 解析與答案使用繁體中文。
-                    3. 包含：10 題單字選擇題、1 篇短文、5 題閱讀理解。
-                    格式標籤：[QUIZ_VOCAB]、[QUIZ_READING]、[ANSWERS]。
-                    """
+                    quiz_prompt = f"專業西語老師，主題「{quiz_topic}」，等級{level}。題目與選項全西語，答案繁中。含10題單字、1篇短文、5題閱讀。格式：[QUIZ_VOCAB][QUIZ_READING][ANSWERS]"
                     quiz_response = model.generate_content(quiz_prompt)
                     quiz_text = quiz_response.text
-                    
                     try:
                         vocab_q = quiz_text.split("[QUIZ_READING]")[0].replace("[QUIZ_VOCAB]", "").strip()
                         reading_q = quiz_text.split("[ANSWERS]")[0].split("[QUIZ_READING]")[1].strip()
                         answers = quiz_text.split("[ANSWERS]")[1].strip()
-                        
-                        st.subheader("Parte 1: Vocabulario (全西文題目)")
+                        st.subheader("Parte 1: Vocabulario")
                         st.markdown(vocab_q)
                         st.divider()
-                        st.subheader("Parte 2: Comprensión de lectura (全西文題目)")
+                        st.subheader("Parte 2: Comprensión de lectura")
                         st.markdown(reading_q)
                         st.divider()
                         with st.expander("👉 查看繁體中文答案解析"):
                             st.info(answers)
-                    except:
-                        st.write(quiz_text) 
-                except Exception as e:
-                    st.error(f"測驗生成失敗：{e}")
+                    except: st.write(quiz_text) 
+                except Exception as e: st.error(f"失敗：{e}")
