@@ -16,17 +16,18 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- 2. 網頁基礎配置 ---
-st.set_page_config(page_title="西語全能家教 4.0", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 4.2", page_icon="🇪🇸", layout="wide")
 
-# 初始化會話狀態 (鎖定內容避免跳分頁時消失)
+# 初始化 Session State
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
 if 'my_notes' not in st.session_state: st.session_state['my_notes'] = []
 if 'quiz_content' not in st.session_state: st.session_state['quiz_content'] = None
 
-# --- 3. 配置 Gemini 3 Flash Preview ---
+# --- 3. 配置 Gemini 3 Flash Preview (維持您的指定模型) ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
+    # 確保模型名稱完全正確
     model = genai.GenerativeModel('gemini-3-flash-preview')
 except Exception as e:
     st.error(f"❌ 大腦連接失敗：{e}")
@@ -41,18 +42,13 @@ async def get_audio_clip(text, voice, rate):
             audio_data += chunk["data"]
     return audio_data
 
-# --- 5. 側邊欄：設定中心 (功能全面回歸) ---
+# --- 5. 側邊欄：設定中心 ---
 st.sidebar.header("⚙️ 學習設定中心")
-
-# 教材參數
-st.sidebar.subheader("📄 教材參數")
 level = st.sidebar.selectbox("西班牙文等級", ["A1 初級", "A2 基礎", "B1 中級", "B2 進階"], index=1)
 format_type = st.sidebar.radio("文章形式", ["一般短文", "雙人對話"])
 word_count = st.sidebar.slider("文章總字數", 100, 500, 200)
 
 st.sidebar.divider()
-
-# 語音參數 (語速與口音)
 st.sidebar.subheader("🎙️ 語音設定")
 speed_val = st.sidebar.select_slider(
     "語速選擇",
@@ -65,14 +61,11 @@ mx_female, mx_male = "es-MX-DaliaNeural", "es-MX-JorgeNeural"
 es_female, es_male = "es-ES-ElviraNeural", "es-ES-AlvaroNeural"
 
 if format_type == "雙人對話":
-    voice_a = st.sidebar.selectbox("角色 A (男聲)", [es_male, mx_male], format_func=lambda x: "西班牙 (Alvaro)" if "ES" in x else "墨西哥 (Jorge)")
-    voice_b = st.sidebar.selectbox("角色 B (女聲)", [es_female, mx_female], format_func=lambda x: "西班牙 (Elvira)" if "ES" in x else "墨西哥 (Dalia)")
+    voice_a = st.sidebar.selectbox("角色 A (男)", [es_male, mx_male], format_func=lambda x: "西班牙 (Alvaro)" if "ES" in x else "墨西哥 (Jorge)")
+    voice_b = st.sidebar.selectbox("角色 B (女)", [es_female, mx_female], format_func=lambda x: "西班牙 (Elvira)" if "ES" in x else "墨西哥 (Dalia)")
 else:
     voice_main = st.sidebar.selectbox("主要音色", [es_female, es_male, mx_female, mx_male], 
                                      format_func=lambda x: f"{'西班牙' if 'ES' in x else '墨西哥'} - {'女聲' if 'Dalia' in x or 'Elvira' in x else '男聲'}")
-
-st.sidebar.divider()
-st.sidebar.info("💡 調整設定後會套用到新生成的內容中。")
 
 # --- 6. 主畫面分頁 ---
 tab1, tab2, tab3 = st.tabs(["📚 今日教材", "📝 挑戰測驗", "📓 智能筆記本"])
@@ -84,27 +77,19 @@ with tab1:
 
     if st.button("🚀 生成精製教材"):
         if not topic:
-            st.warning("請先輸入主題！")
+            st.warning("請輸入主題！")
         else:
-            with st.spinner('正在使用 Gemini 3 編排教材...'):
+            with st.spinner('Gemini 3 正在編排教材...'):
                 try:
-                    style_instruction = "一般短文" if format_type == "一般短文" else "雙人對話標註 A: 與 B:，每句必須換行"
-                    prompt = f"""
-                    請作為專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{style_instruction}。
-                    要求：
-                    1. 翻譯與筆記內容必須使用「繁體中文」(Taiwan Traditional Chinese)。
-                    2. 重點筆記 [NOTES] 必須包含：5 個重點單字（含西文、繁中解釋及例句）與 1 個文法解說。
-                    格式規範：[SPANISH]原文[CHINESE]繁中翻譯[NOTES]繁中筆記
-                    """
+                    prompt = f"專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{format_type}。格式要求：翻譯與筆記必用繁體中文。輸出：[SPANISH]原文[CHINESE]繁中翻譯[NOTES]繁中筆記"
                     response = model.generate_content(prompt)
                     st.session_state['study_material'] = response.text
                 except Exception as e:
-                    if "ResourceExhausted" in str(e):
-                        st.error("⚠️ API 忙碌中，請稍候 1 分鐘再點擊一次。")
+                    if "429" in str(e) or "Quota" in str(e):
+                        st.error("⚠️ Gemini 3 預覽版今日配額已達上限（20次），請稍候再試或等明日恢復。")
                     else:
                         st.error(f"發生錯誤：{e}")
 
-    # 顯示教材
     if st.session_state['study_material']:
         full_text = st.session_state['study_material']
         try:
@@ -119,50 +104,32 @@ with tab1:
                 combined_audio = b""
                 lines = [line.strip() for line in spanish_part.split('\n') if line.strip()]
                 for line in lines:
-                    if format_type == "雙人對話":
-                        v = voice_a if line.startswith("A:") else voice_b
-                    else:
-                        v = voice_main
+                    v = voice_a if (format_type == "雙人對話" and line.startswith("A:")) else \
+                        (voice_b if (format_type == "雙人對話" and line.startswith("B:")) else \
+                        (voice_main if format_type == "一般短文" else voice_a))
                     clip = asyncio.run(get_audio_clip(line.replace("A:","").replace("B:",""), v, speed_val))
                     combined_audio += clip
                 if combined_audio: st.audio(combined_audio, format="audio/mp3")
-
             with col2:
                 st.subheader("🇹🇼 繁體中文翻譯")
                 st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', chinese_part))
             st.divider()
-            st.success(f"💡 重點單字與文法：\n\n{notes_part}")
-        except: st.error("內容解析錯誤，請嘗試重新生成。")
-
-# ----- Tab 2: 挑戰測驗 -----
-with tab2:
-    st.title("📝 西語實力檢測站")
-    quiz_topic = st.text_input("測驗主題？", key="topic_quiz")
-    if st.button("🧠 生成全西語測驗"):
-        if not quiz_topic: st.warning("請輸入主題！")
-        else:
-            with st.spinner('正在命題中...'):
-                try:
-                    quiz_prompt = f"專業西語老師，主題「{quiz_topic}」，等級{level}。題目全西語，解析繁中。格式：[QUIZ_VOCAB][QUIZ_READING][ANSWERS]"
-                    quiz_response = model.generate_content(quiz_prompt)
-                    st.session_state['quiz_content'] = quiz_response.text
-                except: st.error("API 忙碌中，請稍後重試。")
-
-    if st.session_state['quiz_content']:
-        st.write(st.session_state['quiz_content'])
+            st.success(f"💡 重點筆記：\n\n{notes_part}")
+        except: st.error("內容解析錯誤，可能因為 API 回傳不完整，請稍後重試。")
 
 # ----- Tab 3: 智能筆記本 -----
 with tab3:
     st.title("📓 我的智能動態筆記本")
     c_word = st.text_input("輸入想解析的單字：", key="c_word_input")
-    if st.button("🔍 解析並存入筆記"):
+    if st.button("🔍 加入並解析"):
         if c_word:
-            with st.spinner('正在解析...'):
+            with st.spinner('解析中...'):
                 try:
                     word_prompt = f"針對單字「{c_word}」提供繁中解釋、詞性與兩個例句。"
                     w_res = model.generate_content(word_prompt)
                     st.session_state['my_notes'].insert(0, {"word": c_word, "content": w_res.text})
-                except: st.error("解析失敗。")
+                except Exception as e:
+                    st.error("API 暫時無法回應，請稍候。")
     
     st.divider()
     if st.session_state['my_notes']:
