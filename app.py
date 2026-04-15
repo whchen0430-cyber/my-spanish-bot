@@ -13,9 +13,13 @@ try:
 except Exception as e:
     st.error(f"❌ 連接失敗：{e}")
 
-# 2. 網頁介面設定
-st.set_page_config(page_title="西語全能家教 2.2", page_icon="🇪🇸", layout="wide")
-st.title("🇪🇸 西語全能家教 2.2：精準格式優化版")
+# 2. 網頁介面設定 (更換為可愛的國旗圖示)
+st.set_page_config(
+    page_title="西語全能家教 2.2", 
+    page_icon="🇪🇸", # 這裡使用了國旗 Emoji，這會自動變成圖示
+    layout="wide"
+)
+st.title("🇪🇸 西語全能一鍵生成家教 (Gemini 3)")
 
 # 側邊欄設定
 st.sidebar.header("學習設定")
