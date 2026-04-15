@@ -111,4 +111,69 @@ with tab1:
                     chinese_part = parts_notes[0].strip()
                     notes_part = parts_notes[1].strip()
 
-                    col1, col2 = st.columns(2
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("🇪🇸 西班牙文原文")
+                        st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', spanish_part))
+                        # 音檔合併
+                        combined_audio = b""
+                        lines = [line.strip() for line in spanish_part.split('\n') if line.strip()]
+                        for line in lines:
+                            if format_type == "雙人對話":
+                                v = voice_a if line.startswith("A:") else voice_b
+                            else:
+                                v = voice_main
+                            
+                            clip = asyncio.run(get_audio_clip(line.replace("A:","").replace("B:",""), v, speed_val))
+                            combined_audio += clip
+                        if combined_audio: st.audio(combined_audio, format="audio/mp3")
+
+                    with col2:
+                        st.subheader("🇹🇼 繁體中文翻譯")
+                        st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', chinese_part))
+                    
+                    st.divider()
+                    st.subheader("💡 重點單字與文法解說")
+                    st.success(notes_part)
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+# ----- Tab 2: 挑戰測驗 -----
+with tab2:
+    st.title("📝 西語實力檢測站")
+    quiz_topic = st.text_input("測驗主題？", key="topic_quiz", placeholder="例如：能源相關單字測驗...")
+    
+    if st.button("🧠 生成全西語測驗"):
+        if not quiz_topic:
+            st.warning("請輸入主題！")
+        else:
+            with st.spinner('正在命題中...'):
+                try:
+                    quiz_prompt = f"""
+                    作為專業西語老師，針對「{quiz_topic}」與等級「{level}」設計測驗。
+                    要求：
+                    1. 題目與選項必須全部使用西班牙文。
+                    2. 解析與答案使用繁體中文。
+                    3. 包含：10 題單字選擇題、1 篇短文、5 題閱讀理解。
+                    格式標籤：[QUIZ_VOCAB]、[QUIZ_READING]、[ANSWERS]。
+                    """
+                    quiz_response = model.generate_content(quiz_prompt)
+                    quiz_text = quiz_response.text
+                    
+                    try:
+                        vocab_q = quiz_text.split("[QUIZ_READING]")[0].replace("[QUIZ_VOCAB]", "").strip()
+                        reading_q = quiz_text.split("[ANSWERS]")[0].split("[QUIZ_READING]")[1].strip()
+                        answers = quiz_text.split("[ANSWERS]")[1].strip()
+                        
+                        st.subheader("Parte 1: Vocabulario (全西文題目)")
+                        st.markdown(vocab_q)
+                        st.divider()
+                        st.subheader("Parte 2: Comprensión de lectura (全西文題目)")
+                        st.markdown(reading_q)
+                        st.divider()
+                        with st.expander("👉 查看繁體中文答案解析"):
+                            st.info(answers)
+                    except:
+                        st.write(quiz_text) 
+                except Exception as e:
+                    st.error(f"測驗生成失敗：{e}")
