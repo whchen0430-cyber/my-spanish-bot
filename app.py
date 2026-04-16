@@ -5,14 +5,13 @@ import asyncio
 import io
 import re
 
-# --- 1. 圖示與配置 ---
+# --- 1. 配置與圖示 ---
 icon_url = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/512x512/1f1ea-1f1f8.png"
 st.markdown(f"""<head><link rel="icon" href="{icon_url}"><link rel="apple-touch-icon" href="{icon_url}"></head>""", unsafe_allow_html=True)
-st.set_page_config(page_title="西語全能家教 5.4", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能閱讀訓練 5.6", page_icon="🇪🇸", layout="wide")
 
 # 初始化會話狀態
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
-if 'my_notes' not in st.session_state: st.session_state['my_notes'] = []
 if 'quiz_content' not in st.session_state: st.session_state['quiz_content'] = None
 
 # --- 2. 配置 Gemini 2.5 Flash ---
@@ -37,14 +36,14 @@ async def get_audio_clip(text, voice, rate):
         return audio_data
     except: return b""
 
-# --- 4. 側邊欄設定 ---
-st.sidebar.header("⚙️ 學習設定中心")
-if st.sidebar.button("🔔 讀取今日推播教材 (A2)"):
-    with st.spinner('正在調用 A2 教材...'):
+# --- 4. 側邊欄：教材設定 ---
+st.sidebar.header("⚙️ 閱讀設定中心")
+if st.sidebar.button("🔔 讀取今日 A2 推播教材"):
+    with st.spinner('正在編排今日西語任務...'):
         try:
-            res = model.generate_content("你是一位專業西語老師。產出一篇 A2 對話教材。格式要求：[SPANISH]原文 [CHINESE]翻譯 [VOCAB]5個重點單字(含中文與例句) [GRAMMAR]一個詳細文法解析。用繁體中文。")
+            res = model.generate_content("你是一位專業西語老師。產出一篇 A2 對話教材。格式：[SPANISH]原文 [CHINESE]翻譯 [VOCAB]5個重點單字 [GRAMMAR]文法解析。用繁體中文。")
             st.session_state['study_material'] = res.text
-        except: st.error("API 忙碌中。")
+        except: st.error("API 忙碌中，請稍候。")
 
 st.sidebar.divider()
 level = st.sidebar.selectbox("西班牙文等級", ["A1 初級", "A2 基礎", "B1 中級", "B2 進階"], index=1)
@@ -67,7 +66,7 @@ if format_type == "雙人對話":
 else:
     voice_main = st.sidebar.selectbox("主要音色", [es_female, es_male, mx_female, mx_male])
 
-# --- 5. 核心工具函數 ---
+# --- 5. 工具函數 ---
 def format_dialogue(text):
     text = text.replace("**", "")
     processed = re.sub(r'(\s?[^：\s\n]+[:：])', r'\n\n**\1**', text)
@@ -76,89 +75,70 @@ def format_dialogue(text):
 def parse_material(raw_text):
     data = {"span": "", "chin": "", "vocab": "", "grammar": ""}
     if not raw_text: return data
-    
-    # 支援新舊標籤解析
     span_m = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', raw_text, re.S | re.I)
     chin_m = re.search(r'\[CHINESE\](.*?)\[VOCAB\]', raw_text, re.S | re.I)
     vocab_m = re.search(r'\[VOCAB\](.*?)\[GRAMMAR\]', raw_text, re.S | re.I)
     gram_m = re.search(r'\[GRAMMAR\](.*)', raw_text, re.S | re.I)
-    
-    # 備援：若 AI 仍使用舊標籤 [NOTES]，嘗試將其平分
-    if not vocab_m:
-        notes_m = re.search(r'\[NOTES\](.*)', raw_text, re.S | re.I)
-        if notes_m:
-            notes_content = notes_m.group(1)
-            parts = re.split(r'文法解析|Grammar', notes_content, flags=re.I)
-            data["vocab"] = parts[0].strip()
-            data["grammar"] = parts[1].strip() if len(parts) > 1 else "請重新生成以獲取文法解析"
-    
     if span_m and chin_m:
-        data["span"] = span_m.group(1).strip()
-        data["chin"] = chin_m.group(1).strip()
+        data["span"], data["chin"] = span_m.group(1).strip(), chin_m.group(1).strip()
     if vocab_m and gram_m:
-        data["vocab"] = vocab_m.group(1).strip()
-        data["grammar"] = gram_m.group(1).strip()
-        
+        data["vocab"], data["grammar"] = vocab_m.group(1).strip(), gram_m.group(1).strip()
     return data
 
-# --- 6. 主分頁 ---
-tab1, tab2, tab3 = st.tabs(["📚 今日教材", "📝 挑戰測驗", "📓 智能筆記本"])
+# --- 6. 主畫面分頁 ---
+tab1, tab2 = st.tabs(["📚 教材閱讀訓練", "📝 實力檢測測驗"])
 
 with tab1:
     st.title("🇪🇸 西語全能一鍵家教")
-    topic = st.text_input("想練習什麼主題？", key="topic_study")
-    if st.button("🚀 生成教材"):
+    topic = st.text_input("輸入想練習的主題 (例如：墨西哥旅遊、美食、西語日常)：", key="topic_study")
+    if st.button("🚀 生成自訂教材"):
         if not topic: st.warning("請輸入主題！")
         else:
-            with st.spinner('正在編排教材...'):
+            with st.spinner('正在編寫教材與語音中...'):
                 try:
-                    p = f"作為西語老師。主題：{topic}，等級：{level}。格式要求：[SPANISH]原文 [CHINESE]翻譯 [VOCAB]5個重點單字 [GRAMMAR]一個詳細文法解析。用繁體中文。"
+                    p = f"老師。主題：{topic}，等級：{level}。格式：[SPANISH]原文 [CHINESE]翻譯 [VOCAB]5個重點單字與解析 [GRAMMAR]核心文法。繁體中文。"
                     res = model.generate_content(p)
                     st.session_state['study_material'] = res.text
                 except: st.error("API 暫時忙碌。")
 
     if st.session_state['study_material']:
         parsed = parse_material(st.session_state['study_material'])
-        if parsed["span"] and parsed["chin"]:
+        if parsed["span"]:
             c1, c2 = st.columns(2)
             with c1:
-                st.subheader("🇪🇸 原文")
+                st.subheader("🇪🇸 原文閱讀 (Escritura)")
                 st.markdown(format_dialogue(parsed["span"]))
+                # 語音合成
                 combined_audio = b""
                 lines = [l.strip() for l in parsed["span"].split('\n') if l.strip()]
                 for line in lines:
-                    if format_type == "雙人對話":
-                        current_voice = voice_a if any(m in line[:12] for m in ["A:", "1:", "Carlos", "Juan", "Ana"]) else voice_b
-                    else:
-                        current_voice = voice_main
+                    current_voice = voice_a if (format_type == "雙人對話" and any(m in line[:12] for m in ["A:", "1:", "Carlos", "Juan", "Ana", "Luis"])) else (voice_b if format_type == "雙人對話" else voice_main)
                     clean_line = re.sub(r'^.*?[:：]\s*', '', line)
                     clip = asyncio.run(get_audio_clip(clean_line, current_voice, speed_val))
                     combined_audio += clip
                 if combined_audio: st.audio(combined_audio, format="audio/mp3")
             with c2:
-                st.subheader("🇹🇼 翻譯")
+                st.subheader("🇹🇼 翻譯參考 (Traducción)")
                 st.markdown(format_dialogue(parsed["chin"]))
             st.divider()
             
-            # --- 新增：單字與文法分開顯示 ---
-            note_tab1, note_tab2 = st.tabs(["📌 重點單字", "📖 文法詳解"])
-            with note_tab1:
-                st.success(parsed["vocab"])
-            with note_tab2:
-                st.info(parsed["grammar"])
-        else:
-            st.error("解析失敗。")
-            with st.expander("原始內容"): st.code(st.session_state['study_material'])
+            # 筆記區塊加強
+            n_tab1, n_tab2 = st.tabs(["📌 重點單字", "📖 核心文法解析"])
+            with n_tab1: st.success(parsed["vocab"])
+            with n_tab2: st.info(parsed["grammar"])
+        else: st.error("解析失敗，請重試。")
 
-with tab3:
-    st.title("📓 智能筆記本")
-    c_word = st.text_input("輸入單字：", key="c_word")
-    if st.button("🔍 解析"):
-        if c_word:
-            with st.spinner('解析中...'):
+with tab2:
+    st.title("📝 挑戰測驗")
+    quiz_topic = st.text_input("輸入測驗主題：", key="topic_quiz")
+    if st.button("🧠 生成全西語測驗"):
+        if not quiz_topic: st.warning("請輸入主題！")
+        else:
+            with st.spinner('出題中...'):
                 try:
-                    w = model.generate_content(f"針對單字「{c_word}」提供繁中解釋、詞性與兩個例句。")
-                    st.session_state['my_notes'].insert(0, {"word": c_word, "content": w.text})
-                except: st.error("解析失敗")
-    for n in st.session_state['my_notes']:
-        with st.expander(f"📌 {n['word']}", expanded=True): st.write(n['content'])
+                    q_p = f"針對主題「{quiz_topic}」產出一個{level}等級的測驗。含單字選擇、閱讀理解。解析用繁體中文。標註正確答案。"
+                    q_res = model.generate_content(q_p)
+                    st.session_state['quiz_content'] = q_res.text
+                except: st.error("API 暫時忙碌。")
+    if st.session_state['quiz_content']:
+        st.write(st.session_state['quiz_content'])
