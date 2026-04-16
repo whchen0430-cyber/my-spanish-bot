@@ -8,7 +8,7 @@ import re
 # --- 1. 圖示與配置 ---
 icon_url = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/512x512/1f1ea-1f1f8.png"
 st.markdown(f"""<head><link rel="icon" href="{icon_url}"><link rel="apple-touch-icon" href="{icon_url}"></head>""", unsafe_allow_html=True)
-st.set_page_config(page_title="西語全能家教 4.9", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 5.0", page_icon="🇪🇸", layout="wide")
 
 # 初始化會話狀態
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
@@ -42,7 +42,7 @@ st.sidebar.header("⚙️ 學習設定中心")
 if st.sidebar.button("🔔 讀取今日推播教材 (A2)"):
     with st.spinner('正在調用 A2 教材...'):
         try:
-            res = model.generate_content("請作為專業西語老師，產出一篇 A2 等級對話教材。要求：翻譯與筆記用繁體中文。標籤格式：[SPANISH]...[CHINESE]...[NOTES]...")
+            res = model.generate_content("請作為專業西語老師，產出一篇 A2 等級對話教材。要求：翻譯與筆記用繁體中文。必須包含標籤：[SPANISH]、[CHINESE]、[NOTES]。")
             st.session_state['study_material'] = res.text
         except: st.error("API 忙碌中。")
 
@@ -52,19 +52,13 @@ format_type = st.sidebar.radio("文章形式", ["一般短文", "雙人對話"])
 word_count = st.sidebar.slider("文章總字數", 100, 500, 200)
 
 st.sidebar.subheader("🎙️ 語音設定")
-
-# --- 修正處：加入明確的 format_func 確保顯示人性化標籤 ---
 speed_val = st.sidebar.select_slider(
     "語速選擇",
     options=[-50, -25, -10, 0, 10, 20],
     value=-25,
     format_func=lambda x: {
-        -50: "極慢 (0.5x)",
-        -25: "舒適 (0.75x)",
-        -10: "略慢 (0.9x)",
-        0: "正常 (1.0x)",
-        10: "略快 (1.1x)",
-        20: "快速 (1.2x)"
+        -50: "極慢 (0.5x)", -25: "舒適 (0.75x)", -10: "略慢 (0.9x)",
+        0: "正常 (1.0x)", 10: "略快 (1.1x)", 20: "快速 (1.2x)"
     }.get(x, f"{x}%")
 )
 
@@ -80,10 +74,33 @@ else:
 # --- 5. 主分頁 ---
 tab1, tab2, tab3 = st.tabs(["📚 今日教材", "📝 挑戰測驗", "📓 智能筆記本"])
 
+# --- 強化版對話排版函數 ---
 def format_dialogue(text):
     text = text.replace("**", "")
     processed = re.sub(r'(\s?[^：\s\n]+[:：])', r'\n\n**\1**', text)
     return processed.strip()
+
+# --- 核心解析引擎 (Version 5.0) ---
+def parse_material(raw_text):
+    data = {"span": "", "chin": "", "note": ""}
+    try:
+        # 使用正規表達式提取標籤內容，不論標籤大小寫或是否有空格
+        span_match = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', raw_text, re.S | re.I)
+        chin_match = re.search(r'\[CHINESE\](.*?)\[NOTES\]', raw_text, re.S | re.I)
+        note_match = re.search(r'\[NOTES\](.*)', raw_text, re.S | re.I)
+        
+        if span_match and chin_match and note_match:
+            data["span"] = span_match.group(1).strip()
+            data["chin"] = chin_match.group(1).strip()
+            data["note"] = note_match.group(1).strip()
+        else:
+            # 備援計畫：如果標籤對不上，嘗試用關鍵字切割
+            parts = re.split(r'\[SPANISH\]|\[CHINESE\]|\[NOTES\]', raw_text, flags=re.I)
+            if len(parts) >= 4:
+                data["span"], data["chin"], data["note"] = parts[1].strip(), parts[2].strip(), parts[3].strip()
+    except:
+        pass
+    return data
 
 with tab1:
     st.title("🇪🇸 西語全能一鍵家教")
@@ -93,24 +110,21 @@ with tab1:
         else:
             with st.spinner('生成中...'):
                 try:
-                    p = f"專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{format_type}。標籤：[SPANISH][CHINESE][NOTES]"
+                    p = f"作為西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{format_type}。輸出必須包含標籤 [SPANISH]、[CHINESE]、[NOTES]。內容用繁體中文。"
                     res = model.generate_content(p)
                     st.session_state['study_material'] = res.text
-                except: st.error("API 忙碌。")
+                except: st.error("API 暫時忙碌。")
 
     if st.session_state['study_material']:
-        raw = st.session_state['study_material']
-        try:
-            span_raw = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', raw, re.S).group(1).strip()
-            chin_raw = re.search(r'\[CHINESE\](.*?)\[NOTES\]', raw, re.S).group(1).strip()
-            note_raw = re.search(r'\[NOTES\](.*)', raw, re.S).group(1).strip()
-            
+        parsed_data = parse_material(st.session_state['study_material'])
+        
+        if parsed_data["span"] and parsed_data["chin"]:
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("🇪🇸 原文")
-                st.markdown(format_dialogue(span_raw))
+                st.markdown(format_dialogue(parsed_data["span"]))
                 combined_audio = b""
-                lines = [l.strip() for l in span_raw.split('\n') if l.strip()]
+                lines = [l.strip() for l in parsed_data["span"].split('\n') if l.strip()]
                 for line in lines:
                     v = voice_a if (format_type == "雙人對話" and ("A:" in line or "1:" in line)) else \
                         (voice_b if (format_type == "雙人對話" and ("B:" in line or "2:" in line)) else voice_main)
@@ -120,10 +134,11 @@ with tab1:
                 if combined_audio: st.audio(combined_audio, format="audio/mp3")
             with c2:
                 st.subheader("🇹🇼 翻譯")
-                st.markdown(format_dialogue(chin_raw))
+                st.markdown(format_dialogue(parsed_data["chin"]))
             st.divider()
-            st.success(f"💡 筆記：\n\n{note_raw}")
-        except: st.error("內容解析失敗，請重新生成。")
+            st.success(f"💡 筆記：\n\n{parsed_data['note']}")
+        else:
+            st.error("內容解析失敗。請嘗試更換主題或重新點擊生成按鈕。")
 
 with tab3:
     st.title("📓 智能筆記本")
