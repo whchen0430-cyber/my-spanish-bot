@@ -8,7 +8,7 @@ import re
 # --- 1. 圖示與配置 ---
 icon_url = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/512x512/1f1ea-1f1f8.png"
 st.markdown(f"""<head><link rel="icon" href="{icon_url}"><link rel="apple-touch-icon" href="{icon_url}"></head>""", unsafe_allow_html=True)
-st.set_page_config(page_title="西語全能家教 4.6", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 4.8", page_icon="🇪🇸", layout="wide")
 
 # 初始化會話狀態
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
@@ -23,16 +23,11 @@ try:
 except Exception as e:
     st.error(f"❌ 大腦連接失敗：{e}")
 
-# --- 3. 語音生成函數 (加強穩定性) ---
+# --- 3. 語音生成函數 ---
 async def get_audio_clip(text, voice, rate):
-    # 清理文字：移除 Markdown 符號與多餘空白，避免合成失敗
     clean_text = re.sub(r'[*_#~>]', '', text).strip()
-    if not clean_text:
-        return b""
-    
-    # 嚴格格式化語速：確保為 "+N%" 或 "-N%"，若為 0 則使用 "+0%"
+    if not clean_text: return b""
     rate_str = f"{rate:+d}%"
-    
     try:
         communicate = edge_tts.Communicate(clean_text, voice, rate=rate_str)
         audio_data = b""
@@ -40,9 +35,7 @@ async def get_audio_clip(text, voice, rate):
             if chunk["type"] == "audio":
                 audio_data += chunk["data"]
         return audio_data
-    except Exception:
-        # 如果合成失敗（例如網路問題），回傳空字節而不讓程式崩潰
-        return b""
+    except: return b""
 
 # --- 4. 側邊欄設定 ---
 st.sidebar.header("⚙️ 學習設定中心")
@@ -59,22 +52,29 @@ format_type = st.sidebar.radio("文章形式", ["一般短文", "雙人對話"])
 word_count = st.sidebar.slider("文章總字數", 100, 500, 200)
 
 st.sidebar.subheader("🎙️ 語音設定")
-speed_val = st.sidebar.select_slider(
-    "語速選擇", options=[-50, -25, -10, 0, 10, 20], value=-25,
-    format_func=lambda x: f"舒適 (0.75x)" if x==-25 else f"{x}%"
-)
+speed_val = st.sidebar.select_slider("語速選擇", options=[-50, -25, -10, 0, 10, 20], value=-25)
 
 mx_female, mx_male = "es-MX-DaliaNeural", "es-MX-JorgeNeural"
 es_female, es_male = "es-ES-ElviraNeural", "es-ES-AlvaroNeural"
 
 if format_type == "雙人對話":
-    voice_a = st.sidebar.selectbox("角色 A (男)", [es_male, mx_male])
-    voice_b = st.sidebar.selectbox("角色 B (女)", [es_female, mx_female])
+    voice_a = st.sidebar.selectbox("角色 A (男)", [es_male, mx_male], format_func=lambda x: "西班牙 (Alvaro)" if "ES" in x else "墨西哥 (Jorge)")
+    voice_b = st.sidebar.selectbox("角色 B (女)", [es_female, mx_female], format_func=lambda x: "西班牙 (Elvira)" if "ES" in x else "墨西哥 (Dalia)")
 else:
     voice_main = st.sidebar.selectbox("主要音色", [es_female, es_male, mx_female, mx_male])
 
 # --- 5. 主分頁 ---
 tab1, tab2, tab3 = st.tabs(["📚 今日教材", "📝 挑戰測驗", "📓 智能筆記本"])
+
+# --- 強化版對話排版函數 (解決中西文排版混亂) ---
+def format_dialogue(text):
+    # 1. 移除可能干擾的 Markdown 加粗符號
+    text = text.replace("**", "")
+    # 2. 捕捉「姓名/角色 + 冒號」結構 (支援中西文)
+    # 此正則會尋找開頭或空格後的姓名冒號，並強制換行
+    processed = re.sub(r'(\s?[^：\s\n]+[:：])', r'\n\n**\1**', text)
+    # 3. 處理多餘的空行，讓排版更緊湊美觀
+    return processed.strip()
 
 with tab1:
     st.title("🇪🇸 西語全能一鍵家教")
@@ -84,39 +84,39 @@ with tab1:
         else:
             with st.spinner('生成中...'):
                 try:
-                    p = f"專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{format_type}。格式：[SPANISH]原文[CHINESE]翻譯[NOTES]筆記"
+                    p = f"專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{format_type}。標籤：[SPANISH][CHINESE][NOTES]"
                     res = model.generate_content(p)
                     st.session_state['study_material'] = res.text
-                except: st.error("API 暫時忙碌。")
+                except: st.error("API 忙碌。")
 
     if st.session_state['study_material']:
         raw = st.session_state['study_material']
         try:
-            span = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', raw, re.S).group(1).strip()
-            chin = re.search(r'\[CHINESE\](.*?)\[NOTES\]', raw, re.S).group(1).strip()
-            note = re.search(r'\[NOTES\](.*)', raw, re.S).group(1).strip()
+            span_raw = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', raw, re.S).group(1).strip()
+            chin_raw = re.search(r'\[CHINESE\](.*?)\[NOTES\]', raw, re.S).group(1).strip()
+            note_raw = re.search(r'\[NOTES\](.*)', raw, re.S).group(1).strip()
             
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("🇪🇸 原文")
-                st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', span))
-                # 合併語音邏輯優化
+                st.markdown(format_dialogue(span_raw))
                 combined_audio = b""
-                lines = [l.strip() for l in span.split('\n') if l.strip()]
+                # 語音切分 logic：依據冒號切分行
+                lines = [l.strip() for l in span_raw.split('\n') if l.strip()]
                 for line in lines:
-                    v = voice_a if (format_type == "雙人對話" and line.startswith("A:")) else \
-                        (voice_b if (format_type == "雙人對話" and line.startswith("B:")) else \
-                        (voice_main if format_type == "一般短文" else voice_a))
-                    # 傳入前過濾標籤文字
-                    content = line.replace("A:","").replace("B:","").strip()
-                    clip = asyncio.run(get_audio_clip(content, v, speed_val))
+                    # 判斷聲道
+                    v = voice_a if (format_type == "雙人對話" and ("A:" in line or "1:" in line)) else \
+                        (voice_b if (format_type == "雙人對話" and ("B:" in line or "2:" in line)) else voice_main)
+                    # 清理人名標籤再發音
+                    clean_line = re.sub(r'^.*?[:：]\s*', '', line)
+                    clip = asyncio.run(get_audio_clip(clean_line, v, speed_val))
                     combined_audio += clip
                 if combined_audio: st.audio(combined_audio, format="audio/mp3")
             with c2:
                 st.subheader("🇹🇼 翻譯")
-                st.markdown(re.sub(r'(A:|B:)', r'\n**\1**', chin))
+                st.markdown(format_dialogue(chin_raw))
             st.divider()
-            st.success(f"💡 筆記：\n\n{note}")
+            st.success(f"💡 筆記：\n\n{note_raw}")
         except: st.error("內容解析失敗，請重新生成。")
 
 with tab3:
