@@ -8,7 +8,7 @@ import re
 # --- 1. 圖示與配置 ---
 icon_url = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/512x512/1f1ea-1f1f8.png"
 st.markdown(f"""<head><link rel="icon" href="{icon_url}"><link rel="apple-touch-icon" href="{icon_url}"></head>""", unsafe_allow_html=True)
-st.set_page_config(page_title="西語全能家教 5.2", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 5.3", page_icon="🇪🇸", layout="wide")
 
 # 初始化會話狀態
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
@@ -42,7 +42,8 @@ st.sidebar.header("⚙️ 學習設定中心")
 if st.sidebar.button("🔔 讀取今日推播教材 (A2)"):
     with st.spinner('正在調用 A2 教材...'):
         try:
-            res = model.generate_content("你是一位專業西語老師。請產出一篇 A2 等級對話教材。你必須嚴格按照此格式輸出：[SPANISH]放原文 [CHINESE]放翻譯 [NOTES]放筆記。不要加任何額外的開場白。")
+            # 強化指令：要求必須包含文法解析
+            res = model.generate_content("你是一位專業西語老師。請產出一篇 A2 等級對話教材。格式：[SPANISH]原文 [CHINESE]翻譯 [NOTES]包含5個單字與1個詳細文法解析。用繁體中文。")
             st.session_state['study_material'] = res.text
         except: st.error("API 忙碌中。")
 
@@ -57,7 +58,6 @@ speed_val = st.sidebar.select_slider(
     format_func=lambda x: {-50: "極慢 (0.5x)", -25: "舒適 (0.75x)", -10: "略慢 (0.9x)", 0: "正常 (1.0x)", 10: "略快 (1.1x)", 20: "快速 (1.2x)"}.get(x, f"{x}%")
 )
 
-# 語音變數初始化
 mx_female, mx_male = "es-MX-DaliaNeural", "es-MX-JorgeNeural"
 es_female, es_male = "es-ES-ElviraNeural", "es-ES-AlvaroNeural"
 voice_a, voice_b, voice_main = es_male, es_female, es_female
@@ -75,28 +75,14 @@ def format_dialogue(text):
     return processed.strip()
 
 def parse_material(raw_text):
-    """強化版模糊解析引擎"""
     data = {"span": "", "chin": "", "note": ""}
     if not raw_text: return data
-    
-    # 嘗試清理 AI 可能加上的 Markdown 裝飾
     clean_text = raw_text.replace("**[SPANISH]**", "[SPANISH]").replace("**[CHINESE]**", "[CHINESE]").replace("**[NOTES]**", "[NOTES]")
-    
-    # 策略 1: 正則表達式
     span_m = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', clean_text, re.S | re.I)
     chin_m = re.search(r'\[CHINESE\](.*?)\[NOTES\]', clean_text, re.S | re.I)
     note_m = re.search(r'\[NOTES\](.*)', clean_text, re.S | re.I)
-    
     if span_m and chin_m and note_m:
         data["span"], data["chin"], data["note"] = span_m.group(1).strip(), chin_m.group(1).strip(), note_m.group(1).strip()
-    else:
-        # 策略 2: 關鍵字分割備援
-        try:
-            parts = re.split(r'\[SPANISH\]|\[CHINESE\]|\[NOTES\]', clean_text, flags=re.I)
-            if len(parts) >= 4:
-                data["span"], data["chin"], data["note"] = parts[1].strip(), parts[2].strip(), parts[3].strip()
-        except:
-            pass
     return data
 
 # --- 6. 主分頁 ---
@@ -110,7 +96,8 @@ with tab1:
         else:
             with st.spinner('正在編排教材...'):
                 try:
-                    p = f"你是一位專業西語老師。主題：{topic}，等級：{level}，字數：{word_count}。形式：{format_type}。輸出格式嚴禁脫離以下標籤：[SPANISH]、[CHINESE]、[NOTES]。使用繁體中文。"
+                    # 強化指令：特別要求「文法解說」
+                    p = f"作為老師。主題：{topic}，等級：{level}。格式：[SPANISH]原文 [CHINESE]翻譯 [NOTES]包含5個單字與1個文法解析(Grammar)。用繁體中文。"
                     res = model.generate_content(p)
                     st.session_state['study_material'] = res.text
                 except: st.error("API 暫時忙碌。")
@@ -126,7 +113,7 @@ with tab1:
                 lines = [l.strip() for l in parsed["span"].split('\n') if l.strip()]
                 for line in lines:
                     if format_type == "雙人對話":
-                        current_voice = voice_a if any(m in line[:12] for m in ["A:", "1:", "Carlos", "Juan", "Pedro", "José"]) else voice_b
+                        current_voice = voice_a if any(m in line[:12] for m in ["A:", "1:", "Carlos", "Juan", "Ana"]) else voice_b
                     else:
                         current_voice = voice_main
                     clean_line = re.sub(r'^.*?[:：]\s*', '', line)
@@ -137,10 +124,11 @@ with tab1:
                 st.subheader("🇹🇼 翻譯")
                 st.markdown(format_dialogue(parsed["chin"]))
             st.divider()
-            st.success(f"💡 筆記：\n\n{parsed['note']}")
+            # 這裡就是顯示文法解析與單字的地方
+            st.success(f"💡 重點筆記與文法解析：\n\n{parsed['note']}")
         else:
-            st.error("內容解析失敗。AI 回傳格式不正確，請嘗試點擊按鈕重新生成。")
-            with st.expander("查看原始回傳內容"): st.code(st.session_state['study_material'])
+            st.error("內容解析失敗。")
+            with st.expander("原始內容"): st.code(st.session_state['study_material'])
 
 # ----- Tab 3 維持穩定功能 -----
 with tab3:
