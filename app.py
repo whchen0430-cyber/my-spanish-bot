@@ -8,7 +8,7 @@ import re
 # --- 1. 圖示與配置 ---
 icon_url = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/512x512/1f1ea-1f1f8.png"
 st.markdown(f"""<head><link rel="icon" href="{icon_url}"><link rel="apple-touch-icon" href="{icon_url}"></head>""", unsafe_allow_html=True)
-st.set_page_config(page_title="西語全能家教 4.8", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 4.9", page_icon="🇪🇸", layout="wide")
 
 # 初始化會話狀態
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
@@ -52,7 +52,21 @@ format_type = st.sidebar.radio("文章形式", ["一般短文", "雙人對話"])
 word_count = st.sidebar.slider("文章總字數", 100, 500, 200)
 
 st.sidebar.subheader("🎙️ 語音設定")
-speed_val = st.sidebar.select_slider("語速選擇", options=[-50, -25, -10, 0, 10, 20], value=-25)
+
+# --- 修正處：加入明確的 format_func 確保顯示人性化標籤 ---
+speed_val = st.sidebar.select_slider(
+    "語速選擇",
+    options=[-50, -25, -10, 0, 10, 20],
+    value=-25,
+    format_func=lambda x: {
+        -50: "極慢 (0.5x)",
+        -25: "舒適 (0.75x)",
+        -10: "略慢 (0.9x)",
+        0: "正常 (1.0x)",
+        10: "略快 (1.1x)",
+        20: "快速 (1.2x)"
+    }.get(x, f"{x}%")
+)
 
 mx_female, mx_male = "es-MX-DaliaNeural", "es-MX-JorgeNeural"
 es_female, es_male = "es-ES-ElviraNeural", "es-ES-AlvaroNeural"
@@ -66,14 +80,9 @@ else:
 # --- 5. 主分頁 ---
 tab1, tab2, tab3 = st.tabs(["📚 今日教材", "📝 挑戰測驗", "📓 智能筆記本"])
 
-# --- 強化版對話排版函數 (解決中西文排版混亂) ---
 def format_dialogue(text):
-    # 1. 移除可能干擾的 Markdown 加粗符號
     text = text.replace("**", "")
-    # 2. 捕捉「姓名/角色 + 冒號」結構 (支援中西文)
-    # 此正則會尋找開頭或空格後的姓名冒號，並強制換行
     processed = re.sub(r'(\s?[^：\s\n]+[:：])', r'\n\n**\1**', text)
-    # 3. 處理多餘的空行，讓排版更緊湊美觀
     return processed.strip()
 
 with tab1:
@@ -101,13 +110,10 @@ with tab1:
                 st.subheader("🇪🇸 原文")
                 st.markdown(format_dialogue(span_raw))
                 combined_audio = b""
-                # 語音切分 logic：依據冒號切分行
                 lines = [l.strip() for l in span_raw.split('\n') if l.strip()]
                 for line in lines:
-                    # 判斷聲道
                     v = voice_a if (format_type == "雙人對話" and ("A:" in line or "1:" in line)) else \
                         (voice_b if (format_type == "雙人對話" and ("B:" in line or "2:" in line)) else voice_main)
-                    # 清理人名標籤再發音
                     clean_line = re.sub(r'^.*?[:：]\s*', '', line)
                     clip = asyncio.run(get_audio_clip(clean_line, v, speed_val))
                     combined_audio += clip
