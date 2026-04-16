@@ -8,7 +8,7 @@ import re
 # --- 1. 圖示與配置 ---
 icon_url = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/512x512/1f1ea-1f1f8.png"
 st.markdown(f"""<head><link rel="icon" href="{icon_url}"><link rel="apple-touch-icon" href="{icon_url}"></head>""", unsafe_allow_html=True)
-st.set_page_config(page_title="西語全能家教 5.3", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="西語全能家教 5.4", page_icon="🇪🇸", layout="wide")
 
 # 初始化會話狀態
 if 'study_material' not in st.session_state: st.session_state['study_material'] = None
@@ -42,8 +42,7 @@ st.sidebar.header("⚙️ 學習設定中心")
 if st.sidebar.button("🔔 讀取今日推播教材 (A2)"):
     with st.spinner('正在調用 A2 教材...'):
         try:
-            # 強化指令：要求必須包含文法解析
-            res = model.generate_content("你是一位專業西語老師。請產出一篇 A2 等級對話教材。格式：[SPANISH]原文 [CHINESE]翻譯 [NOTES]包含5個單字與1個詳細文法解析。用繁體中文。")
+            res = model.generate_content("你是一位專業西語老師。產出一篇 A2 對話教材。格式要求：[SPANISH]原文 [CHINESE]翻譯 [VOCAB]5個重點單字(含中文與例句) [GRAMMAR]一個詳細文法解析。用繁體中文。")
             st.session_state['study_material'] = res.text
         except: st.error("API 忙碌中。")
 
@@ -75,14 +74,31 @@ def format_dialogue(text):
     return processed.strip()
 
 def parse_material(raw_text):
-    data = {"span": "", "chin": "", "note": ""}
+    data = {"span": "", "chin": "", "vocab": "", "grammar": ""}
     if not raw_text: return data
-    clean_text = raw_text.replace("**[SPANISH]**", "[SPANISH]").replace("**[CHINESE]**", "[CHINESE]").replace("**[NOTES]**", "[NOTES]")
-    span_m = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', clean_text, re.S | re.I)
-    chin_m = re.search(r'\[CHINESE\](.*?)\[NOTES\]', clean_text, re.S | re.I)
-    note_m = re.search(r'\[NOTES\](.*)', clean_text, re.S | re.I)
-    if span_m and chin_m and note_m:
-        data["span"], data["chin"], data["note"] = span_m.group(1).strip(), chin_m.group(1).strip(), note_m.group(1).strip()
+    
+    # 支援新舊標籤解析
+    span_m = re.search(r'\[SPANISH\](.*?)\[CHINESE\]', raw_text, re.S | re.I)
+    chin_m = re.search(r'\[CHINESE\](.*?)\[VOCAB\]', raw_text, re.S | re.I)
+    vocab_m = re.search(r'\[VOCAB\](.*?)\[GRAMMAR\]', raw_text, re.S | re.I)
+    gram_m = re.search(r'\[GRAMMAR\](.*)', raw_text, re.S | re.I)
+    
+    # 備援：若 AI 仍使用舊標籤 [NOTES]，嘗試將其平分
+    if not vocab_m:
+        notes_m = re.search(r'\[NOTES\](.*)', raw_text, re.S | re.I)
+        if notes_m:
+            notes_content = notes_m.group(1)
+            parts = re.split(r'文法解析|Grammar', notes_content, flags=re.I)
+            data["vocab"] = parts[0].strip()
+            data["grammar"] = parts[1].strip() if len(parts) > 1 else "請重新生成以獲取文法解析"
+    
+    if span_m and chin_m:
+        data["span"] = span_m.group(1).strip()
+        data["chin"] = chin_m.group(1).strip()
+    if vocab_m and gram_m:
+        data["vocab"] = vocab_m.group(1).strip()
+        data["grammar"] = gram_m.group(1).strip()
+        
     return data
 
 # --- 6. 主分頁 ---
@@ -96,8 +112,7 @@ with tab1:
         else:
             with st.spinner('正在編排教材...'):
                 try:
-                    # 強化指令：特別要求「文法解說」
-                    p = f"作為老師。主題：{topic}，等級：{level}。格式：[SPANISH]原文 [CHINESE]翻譯 [NOTES]包含5個單字與1個文法解析(Grammar)。用繁體中文。"
+                    p = f"作為西語老師。主題：{topic}，等級：{level}。格式要求：[SPANISH]原文 [CHINESE]翻譯 [VOCAB]5個重點單字 [GRAMMAR]一個詳細文法解析。用繁體中文。"
                     res = model.generate_content(p)
                     st.session_state['study_material'] = res.text
                 except: st.error("API 暫時忙碌。")
@@ -124,13 +139,17 @@ with tab1:
                 st.subheader("🇹🇼 翻譯")
                 st.markdown(format_dialogue(parsed["chin"]))
             st.divider()
-            # 這裡就是顯示文法解析與單字的地方
-            st.success(f"💡 重點筆記與文法解析：\n\n{parsed['note']}")
+            
+            # --- 新增：單字與文法分開顯示 ---
+            note_tab1, note_tab2 = st.tabs(["📌 重點單字", "📖 文法詳解"])
+            with note_tab1:
+                st.success(parsed["vocab"])
+            with note_tab2:
+                st.info(parsed["grammar"])
         else:
-            st.error("內容解析失敗。")
+            st.error("解析失敗。")
             with st.expander("原始內容"): st.code(st.session_state['study_material'])
 
-# ----- Tab 3 維持穩定功能 -----
 with tab3:
     st.title("📓 智能筆記本")
     c_word = st.text_input("輸入單字：", key="c_word")
