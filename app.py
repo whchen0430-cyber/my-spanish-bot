@@ -83,7 +83,7 @@ if st.button("✨ 生成精華教材 (200字)"):
         try:
             genai.configure(api_key=API_KEY)
             # 使用目前最穩定且聰明的 2.0 Flash 模型
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            model = genai.GenerativeModel('gemini-flash-latest')
             
             final_mode = "dialogue" if "對話" in mode else "article"
             style_instr = "兩人對話，格式『名字: 內容』" if final_mode == "dialogue" else "連續短文，禁止出現名字或冒號。"
