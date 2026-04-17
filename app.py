@@ -7,82 +7,52 @@ st.set_page_config(page_title="西語家教 Elite", page_icon="🇪🇸", layout
 
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 2. 精簡美化版 CSS ---
+# --- 2. UI 質感與對話排版 CSS ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
     .main { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
     
-    /* 主卡片容器 */
     .content-card {
-        background: white;
-        border-radius: 12px;
-        padding: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e2e8f0;
+        background: white; border-radius: 12px; padding: 15px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0;
     }
     
-    /* 原文與翻譯區塊 */
-    .spanish-box {
-        background: #f0fdfa;
-        border-left: 4px solid #0d9488;
-        padding: 12px;
-        border-radius: 8px;
-        font-size: 1.1rem;
-        line-height: 1.5;
-        color: #134e4a;
-        margin-bottom: 8px;
+    /* 對話/短文 共通樣式 */
+    .text-block {
+        padding: 12px; border-radius: 8px; margin-bottom: 12px;
+        font-size: 1.05rem; line-height: 1.6;
     }
-    .chinese-box {
-        background: #fffbeb;
-        border-left: 4px solid #f59e0b;
-        padding: 10px;
-        border-radius: 8px;
-        color: #475569;
-        font-size: 0.95rem;
-        line-height: 1.5;
-        margin-bottom: 15px;
-    }
+    .spanish-theme { background: #f0fdfa; border-left: 5px solid #0d9488; color: #134e4a; }
+    .chinese-theme { background: #fffbeb; border-left: 5px solid #f59e0b; color: #475569; font-size: 0.95rem; }
 
-    /* 緊湊筆記區塊：取消大空格，改用細線分界 */
-    .note-container {
-        border: 1px solid #f1f5f9;
-        border-radius: 8px;
-        overflow: hidden;
+    /* 強制每一行對話的分界線 */
+    .dialogue-line {
+        padding-bottom: 6px; margin-bottom: 6px;
+        border-bottom: 1px dashed rgba(0,0,0,0.05);
     }
+    .dialogue-line:last-child { border-bottom: none; margin-bottom: 0; }
+
+    /* 緊湊筆記區 */
+    .note-container { border: 1px solid #f1f5f9; border-radius: 8px; overflow: hidden; margin-top: 10px; }
     .note-row {
-        display: flex;
-        align-items: flex-start;
-        padding: 6px 10px;
-        border-bottom: 1px solid #f1f5f9;
-        background: white;
-        font-size: 0.88rem;
-        line-height: 1.4;
+        display: flex; align-items: flex-start; padding: 6px 10px;
+        border-bottom: 1px solid #f1f5f9; background: white; font-size: 0.88rem;
     }
     .note-row:last-child { border-bottom: none; }
-    
-    .tag-v { color: #0d9488; font-weight: 700; min-width: 65px; font-size: 0.75rem; margin-top: 2px; }
-    .tag-g { color: #f59e0b; font-weight: 700; min-width: 65px; font-size: 0.75rem; margin-top: 2px; }
-    
-    .note-text { color: #334155; flex: 1; }
-    .note-text strong { color: #e11d48; } /* 強調標示 */
+    .tag-v { color: #0d9488; font-weight: 700; min-width: 75px; font-size: 0.75rem; }
+    .tag-g { color: #f59e0b; font-weight: 700; min-width: 75px; font-size: 0.75rem; }
+    .note-text { flex: 1; color: #334155; }
+    .note-text strong { color: #e11d48; }
 
-    /* 智慧按鈕 */
-    .stButton>button {
-        border-radius: 8px;
-        background: #1e293b;
-        color: white;
-        font-weight: 600;
-        transition: 0.2s;
-        height: 3em;
-    }
-    .stButton>button:hover { background: #000000; transform: translateY(-1px); }
+    .stButton>button { border-radius: 8px; background: #1e293b; color: white; font-weight: 600; height: 3em; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. JavaScript 語音橋接 ---
 def st_audio_logic(lines, accent, speed, mode, action):
-    clean_lines = [re.sub(r'^.*?[：:]', '', line).replace('**', '').strip() for line in lines]
+    # 清理掉對話中的姓名與標記，只播放純西文
+    clean_lines = [re.sub(r'^.*?[：:]', '', line).replace('**', '').strip() for line in lines if line.strip()]
     js_code = f"""
     <script>
     (function() {{
@@ -125,7 +95,7 @@ with st.sidebar:
 
 col1, col2 = st.columns([2, 1])
 with col1:
-    topic = st.text_input("主題", placeholder="例如：銀山溫泉、離岸風電專案...")
+    topic = st.text_input("主題", placeholder="例如：銀山溫泉辦理入住...")
 with col2:
     level = st.selectbox("等級", ["A1", "A2", "B1", "B2"], index=1)
 
@@ -142,28 +112,32 @@ if st.button("✨ 生成教材"):
             genai.configure(api_key=API_KEY)
             model = genai.GenerativeModel('gemini-flash-latest')
             is_dialogue = "對話" in mode
-            final_mode = "dialogue" if is_dialogue else "article"
-            style_instr = "兩人對話，格式『名字: 內容』。翻譯也請依照『名字: 內容』分行。" if is_dialogue else "連續短文，禁止名字。"
             
-            prompt = f"你是頂尖西語老師。主題：{topic}。等級：{level}。要求：[SPANISH] 200字，形式：{style_instr}。[CHINESE] 對應翻譯並分行。[VOCAB] 5個單字及例句。[GRAMMAR] 2個文法。語音不讀名字。禁止使用 # 號。"
+            prompt = f"""你是頂尖西語老師。主題：{topic}。等級：{level}。
+            要求格式必須嚴格遵守標籤：
+            [SPANISH] 200字左右。若是對話，每句話必須『獨立換行』並標註『名字:』。
+            [CHINESE] 對應翻譯。若是對話，每一行翻譯必須與原文對應，且『獨立換行』標註『名字:』。
+            [VOCAB] 5個單字及例句。
+            [GRAMMAR] 2個文法點。
+            語音不讀名字，禁止使用#號。"""
             
             with st.spinner("撰寫中..."):
                 response = model.generate_content(prompt)
-                full_text = response.text.replace('###', '').replace('#', '')
-                sections = re.split(r'\[(SPANISH|CHINESE|VOCAB|GRAMMAR)\]', full_text)
+                res_text = response.text.replace('###', '').replace('#', '')
+                sections = re.split(r'\[(SPANISH|CHINESE|VOCAB|GRAMMAR)\]', res_text)
                 if len(sections) >= 9:
                     st.session_state['data'] = {sections[i]: sections[i+1].strip() for i in range(1, len(sections), 2)}
-                    st.session_state['mode'] = final_mode
+                    st.session_state['mode'] = "dialogue" if is_dialogue else "article"
         except Exception as e:
             st.error(f"Error: {e}")
 
-# --- 6. 結果呈現 ---
+# --- 6. 結果呈現 (核心修復區) ---
 if 'data' in st.session_state:
     data = st.session_state['data']
     
     c1, c2 = st.columns([2, 1])
     with c1:
-        if st.button("⏯️ 智慧播放 / 暫停"):
+        if st.button("⏯️ 播放 / 暫停"):
             st_audio_logic(data['SPANISH'].split('\n'), accent, speed, st.session_state['mode'], "toggle")
     with c2:
         if st.button("⏹️ 停止"):
@@ -171,23 +145,23 @@ if 'data' in st.session_state:
     
     st.markdown('<div class="content-card">', unsafe_allow_html=True)
     
-    # 原文與翻譯
-    st.markdown(f'<div class="spanish-box"><b>📖 原文</b><br>{data["SPANISH"].replace("\\n", "<br>")}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="chinese-box"><b>🏮 翻譯</b><br>{data["CHINESE"].replace("\\n", "<br>")}</div>', unsafe_allow_html=True)
+    # 原文與翻譯的對話對齊邏輯
+    for lang_key, theme in [('SPANISH', 'spanish-theme'), ('CHINESE', 'chinese-theme')]:
+        label = "原文" if lang_key == 'SPANISH' else "翻譯"
+        # 使用正規表達式切割，確保不論單換行或多換行都視為一筆對話
+        lines = [l.strip() for l in re.split(r'\n+', data[lang_key]) if l.strip()]
+        
+        html_content = f'<div class="text-block {theme}"><b>📖 {label}</b><br>'
+        for line in lines:
+            html_content += f'<div class="dialogue-line">{line}</div>'
+        html_content += '</div>'
+        st.markdown(html_content, unsafe_allow_html=True)
     
-    # 緊湊型筆記區
+    # 筆記區
     st.markdown('<div class="note-container">', unsafe_allow_html=True)
-    
-    # 單字
-    for item in data['VOCAB'].split('\n'):
-        if item.strip():
-            clean_item = item.replace("**", "<strong>").replace("**", "</strong>")
-            st.markdown(f'<div class="note-row"><div class="tag-v">VOCAB</div><div class="note-text">{clean_item}</div></div>', unsafe_allow_html=True)
-            
-    # 文法
-    for item in data['GRAMMAR'].split('\n'):
-        if item.strip():
-            clean_item = item.replace("**", "<strong>").replace("**", "</strong>")
-            st.markdown(f'<div class="note-row"><div class="tag-g">GRAMMAR</div><div class="note-text">{clean_item}</div></div>', unsafe_allow_html=True)
-    
+    for tag, key, css in [('VOCAB', 'VOCAB', 'tag-v'), ('GRAMMAR', 'GRAMMAR', 'tag-g')]:
+        items = [i.strip() for i in data[key].split('\n') if i.strip()]
+        for it in items:
+            clean_it = it.replace("**", "<strong>").replace("**", "</strong>")
+            st.markdown(f'<div class="note-row"><div class="{css}">{tag}</div><div class="note-text">{clean_it}</div></div>', unsafe_allow_html=True)
     st.markdown('</div></div>', unsafe_allow_html=True)
