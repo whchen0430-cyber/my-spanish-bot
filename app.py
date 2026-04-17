@@ -20,7 +20,7 @@ try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
     # 使用 1.5-flash 確保連線成功率，避開 2.0 預覽版的配額限制
-    model = genai.GenerativeModel('gemini-1.5-flash') 
+    model = genai.GenerativeModel('gemini-2.5-flash') 
 except Exception as e:
     st.error(f"❌ 大腦連接失敗：請檢查 Secrets 設定。")
 
