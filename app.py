@@ -3,13 +3,13 @@ import google.generativeai as genai
 import re
 
 # --- 1. 核心設定 ---
-st.set_page_config(page_title="西語智慧家教 Elite", page_icon="🇪🇸", layout="centered")
+st.set_page_config(page_title="西語智慧家教 Elite 2.5", page_icon="🇪🇸", layout="centered")
 
 # 從 Streamlit Secrets 中設定 GEMINI_API_KEY
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 # --- 2. 旗艦卡片美學與排版 CSS ---
-# 堅持完美：單字 strong 僅使用橘紅色純粗體，移除黃色螢光底色，畫面極致乾淨。
+# 堅持你的極致美學：單字 strong 僅使用橘紅色純粗體，移除黃色螢光底色，畫面極致乾淨。
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -75,12 +75,12 @@ def st_audio_logic(lines, accent, speed, character):
     st.components.v1.html(js_code, height=0)
 
 # --- 4. 主介面排版 ---
-st.title("🇪🇸 西語智慧家教 Elite (Streamlit 修復版)")
-st.caption("250字黃金精華教材 • 多國口音智慧切換")
+st.title("🇪🇸 西語智慧家教 Elite (Gemini 2.5 Flash)")
+st.caption("全新 2.5 Flash 核心驅動 • 250字卡片美學精華教材")
 
 with st.sidebar:
     st.header("⚙️ 學習設定")
-    topic_input = st.text_input("輸入你想演練的主題：", value="在馬德里小酒館與多年未見的老朋友重逢，一起乾杯慶祝並分享未來的計畫")
+    topic_input = st.text_input("輸入你想演練的主題：", value="在巴塞隆納的設計旅店 check-in，讚美大廳的空間設計與畫作，並詢問可否幫忙將行李搬到房間")
     
     accent = st.selectbox("選擇發音口音：", [
         ("es-ES", "🇪🇸 西班牙本土 (Castellano)"),
@@ -92,14 +92,14 @@ with st.sidebar:
     speed = st.slider("調整老師語速：", min_value=0.5, max_value=1.5, value=0.9, step=0.1)
 
 # --- 5. AI 生成邏輯 ---
-if st.button("🪄 生成客製化實戰教材", use_container_width=True):
+if st.button("🪄 運用 2.5 閃電核心生成教材", use_container_width=True):
     if not API_KEY:
         st.error("請在 st.secrets 中設定您的 GEMINI_API_KEY")
     else:
         genai.configure(api_key=API_KEY)
         
-        # 【核心修復】使用標準且絕對受支援的官方完整名稱
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # 【核心升級】無縫切換至最新的高速穩定旗艦模型型號
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         prompt = f"""
         你是最溫柔、專業的西班牙語老師。請針對主題「{topic_input}」，為 A2-B1 等級的學生設計一份實用教材。
@@ -107,7 +107,7 @@ if st.button("🪄 生成客製化實戰教材", use_container_width=True):
 
         [SPANISH]
         這裡寫西班牙文小短文或雙人對話（如果是對話，請明確寫出角色名字如 Juan:, Maria:）。
-        請將需要學生注意的「重要單字或片語」用 Markdown 的粗體標籤 ** 包裹起來，例如：**reencuentro**。
+        請將需要學生注意的「重要單字或片語」用 Markdown 的粗體標籤 ** 包裹起來，例如：**diseño**。
 
         [CHINESE]
         這裡寫整篇西班牙文的「繁體中文」翻譯。
@@ -119,7 +119,7 @@ if st.button("🪄 生成客製化實戰教材", use_container_width=True):
         列出 1-2 個實用的文法或句型重點解析。
         """
         
-        with st.spinner("⏳ 老師正在為您重新接通 Gemini 1.5 頻道..."):
+        with st.spinner("⚡ 2.5 Flash 正在以極速為您雕刻精華教材..."):
             try:
                 response = model.generate_content(prompt)
                 text = response.text
