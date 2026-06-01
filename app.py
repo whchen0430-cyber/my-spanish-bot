@@ -5,11 +5,11 @@ import re
 # --- 1. 核心設定 ---
 st.set_page_config(page_title="西語智慧家教 Elite", page_icon="🇪🇸", layout="centered")
 
-# 建議在 Streamlit Secrets 中設定 GEMINI_API_KEY
+# 從 Streamlit Secrets 中設定 GEMINI_API_KEY
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 # --- 2. 旗艦卡片美學與排版 CSS ---
-# 順應你的喜好：單字 strong 僅使用橘紅色純粗體，移除任何黃色螢光底色，畫面極致乾淨。
+# 堅持完美：單字 strong 僅使用橘紅色純粗體，移除黃色螢光底色，畫面極致乾淨。
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -61,7 +61,6 @@ def st_audio_logic(lines, accent, speed, character):
             utterance.rate = {speed};
             utterance.pitch = {pitch};
             
-            // 智慧尋找對應口音的內建語音包
             const voices = synth.getVoices();
             const matchedVoice = voices.find(v => v.lang.includes("{accent}"));
             if (matchedVoice) {{ utterance.voice = matchedVoice; }}
@@ -76,7 +75,7 @@ def st_audio_logic(lines, accent, speed, character):
     st.components.v1.html(js_code, height=0)
 
 # --- 4. 主介面排版 ---
-st.title("🇪🇸 西語智慧家教 Elite (Streamlit 旗艦版)")
+st.title("🇪🇸 西語智慧家教 Elite (Streamlit 修復版)")
 st.caption("250字黃金精華教材 • 多國口音智慧切換")
 
 with st.sidebar:
@@ -98,8 +97,9 @@ if st.button("🪄 生成客製化實戰教材", use_container_width=True):
         st.error("請在 st.secrets 中設定您的 GEMINI_API_KEY")
     else:
         genai.configure(api_key=API_KEY)
-        # 使用你最熟悉的穩定旗艦模型
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # 【核心修復】使用標準且絕對受支援的官方完整名稱
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
         prompt = f"""
         你是最溫柔、專業的西班牙語老師。請針對主題「{topic_input}」，為 A2-B1 等級的學生設計一份實用教材。
@@ -119,7 +119,7 @@ if st.button("🪄 生成客製化實戰教材", use_container_width=True):
         列出 1-2 個實用的文法或句型重點解析。
         """
         
-        with st.spinner("⏳ 老師正在為您精心雕刻 250 字卡片教材..."):
+        with st.spinner("⏳ 老師正在為您重新接通 Gemini 1.5 頻道..."):
             try:
                 response = model.generate_content(prompt)
                 text = response.text
