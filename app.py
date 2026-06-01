@@ -1,167 +1,265 @@
-import streamlit as st
+from fastapi import FastAPI, Form
+from fastapi.responses import HTMLResponse
 import google.generativeai as genai
-import re
+import os
 
-# --- 1. 核心設定 ---
-st.set_page_config(page_title="西語家教 Elite", page_icon="🇪🇸", layout="centered")
+app = FastAPI()
 
-API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+# 確保抓取 Vercel 的環境變數
+API_KEY = os.environ.get("GEMINI_API_KEY", "")
+genai.configure(api_key=API_KEY)
 
-# --- 2. UI 質感與對話排版 CSS ---
-st.markdown("""
+# 終極 HTML 介面：嵌入 CSS 排版、過濾 Markdown 符號與多國口音系統
+html_content = """
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>西語 2.5 Flash 旗艦家教</title>
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    .main { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-    
-    .content-card {
-        background: white; border-radius: 12px; padding: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0;
-    }
-    
-    /* 對話/短文 共通樣式 */
-    .text-block {
-        padding: 12px; border-radius: 8px; margin-bottom: 12px;
-        font-size: 1.05rem; line-height: 1.6;
-    }
-    .spanish-theme { background: #f0fdfa; border-left: 5px solid #0d9488; color: #134e4a; }
-    .chinese-theme { background: #fffbeb; border-left: 5px solid #f59e0b; color: #475569; font-size: 0.95rem; }
-
-    /* 強制每一行對話的分界線 */
-    .dialogue-line {
-        padding-bottom: 6px; margin-bottom: 6px;
-        border-bottom: 1px dashed rgba(0,0,0,0.05);
-    }
-    .dialogue-line:last-child { border-bottom: none; margin-bottom: 0; }
-
-    /* 緊湊筆記區 */
-    .note-container { border: 1px solid #f1f5f9; border-radius: 8px; overflow: hidden; margin-top: 10px; }
-    .note-row {
-        display: flex; align-items: flex-start; padding: 6px 10px;
-        border-bottom: 1px solid #f1f5f9; background: white; font-size: 0.88rem;
-    }
-    .note-row:last-child { border-bottom: none; }
-    .tag-v { color: #0d9488; font-weight: 700; min-width: 75px; font-size: 0.75rem; }
-    .tag-g { color: #f59e0b; font-weight: 700; min-width: 75px; font-size: 0.75rem; }
-    .note-text { flex: 1; color: #334155; }
-    .note-text strong { color: #e11d48; }
-
-    .stButton>button { border-radius: 8px; background: #1e293b; color: white; font-weight: 600; height: 3em; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 3. JavaScript 語音橋接 ---
-def st_audio_logic(lines, accent, speed, mode, action):
-    # 清理掉對話中的姓名與標記，只播放純西文
-    clean_lines = [re.sub(r'^.*?[：:]', '', line).replace('**', '').strip() for line in lines if line.strip()]
-    js_code = f"""
-    <script>
-    (function() {{
-        const action = "{action}";
-        const synth = window.speechSynthesis;
-        if (action === "toggle") {{
-            if (synth.speaking && !synth.paused) {{ synth.pause(); }}
-            else if (synth.paused) {{ synth.resume(); }}
-            else {{
-                synth.cancel();
-                const lines = {clean_lines};
-                let idx = 0;
-                function play() {{
-                    if (idx >= lines.length) return;
-                    const utterance = new SpeechSynthesisUtterance(lines[idx]);
-                    utterance.lang = "{accent[:5]}";
-                    utterance.rate = {speed};
-                    if ("{mode}" === "dialogue") {{ utterance.pitch = (idx % 2 === 0) ? 0.85 : 1.15; }}
-                    utterance.onend = () => {{ idx++; setTimeout(play, 300); }};
-                    synth.speak(utterance);
-                }}
-                play();
-            }}
-        }} else if (action === "stop") {{ synth.cancel(); }}
-    }})();
-    </script>
-    """
-    st.components.v1.html(js_code, height=0)
-
-# --- 4. 主介面 UI ---
-st.title("🇪🇸 西語家教 Elite")
-
-with st.sidebar:
-    st.header("⚙️ 設定")
-    if not API_KEY:
-        API_KEY = st.text_input("🔑 API Key", type="password")
-    accent = st.selectbox("🌍 口音", ["es-ES", "es-MX"])
-    speed = st.select_slider("⚡ 語速", options=[0.7, 0.85, 1.0, 1.2], value=1.0)
-    st.caption("Model: gemini-flash-latest")
-
-col1, col2 = st.columns([2, 1])
-with col1:
-    topic = st.text_input("主題", placeholder="例如：銀山溫泉辦理入住...")
-with col2:
-    level = st.selectbox("等級", ["A1", "A2", "B1", "B2"], index=1)
-
-mode = st.radio("模式", ["📜 短文", "💬 對話"], horizontal=True)
-
-# --- 5. 生成邏輯 ---
-if st.button("✨ 生成教材"):
-    if not API_KEY:
-        st.warning("請設定 API Key")
-    elif not topic:
-        st.warning("請輸入主題")
-    else:
-        try:
-            genai.configure(api_key=API_KEY)
-            model = genai.GenerativeModel('gemini-flash-latest')
-            is_dialogue = "對話" in mode
-            
-            prompt = f"""你是頂尖西語老師。主題：{topic}。等級：{level}。
-            要求格式必須嚴格遵守標籤：
-            [SPANISH] 200字左右。若是對話，每句話必須『獨立換行』並標註『名字:』。
-            [CHINESE] 對應翻譯。若是對話，每一行翻譯必須與原文對應，且『獨立換行』標註『名字:』。
-            [VOCAB] 5個單字及例句。
-            [GRAMMAR] 2個文法點。
-            語音不讀名字，禁止使用#號。"""
-            
-            with st.spinner("撰寫中..."):
-                response = model.generate_content(prompt)
-                res_text = response.text.replace('###', '').replace('#', '')
-                sections = re.split(r'\[(SPANISH|CHINESE|VOCAB|GRAMMAR)\]', res_text)
-                if len(sections) >= 9:
-                    st.session_state['data'] = {sections[i]: sections[i+1].strip() for i in range(1, len(sections), 2)}
-                    st.session_state['mode'] = "dialogue" if is_dialogue else "article"
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-# --- 6. 結果呈現 (核心修復區) ---
-if 'data' in st.session_state:
-    data = st.session_state['data']
-    
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        if st.button("⏯️ 播放 / 暫停"):
-            st_audio_logic(data['SPANISH'].split('\n'), accent, speed, st.session_state['mode'], "toggle")
-    with c2:
-        if st.button("⏹️ 停止"):
-            st_audio_logic([], "", 0, "", "stop")
-    
-    st.markdown('<div class="content-card">', unsafe_allow_html=True)
-    
-    # 原文與翻譯的對話對齊邏輯
-    for lang_key, theme in [('SPANISH', 'spanish-theme'), ('CHINESE', 'chinese-theme')]:
-        label = "原文" if lang_key == 'SPANISH' else "翻譯"
-        # 使用正規表達式切割，確保不論單換行或多換行都視為一筆對話
-        lines = [l.strip() for l in re.split(r'\n+', data[lang_key]) if l.strip()]
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px; margin-top: 0; }
+        .control-panel { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin-bottom: 25px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #34495e; }
+        input[type="text"], select { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .slider-container { display: flex; align-items: center; gap: 15px; }
+        input[type="range"] { flex: 1; }
+        .btn { background-color: #e74c3c; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: background 0.3s; width: 100%; }
+        .btn:hover { background-color: #c0392b; }
+        .btn:disabled { background-color: #bdc3c7; cursor: not-allowed; }
         
-        html_content = f'<div class="text-block {theme}"><b>📖 {label}</b><br>'
-        for line in lines:
-            html_content += f'<div class="dialogue-line">{line}</div>'
-        html_content += '</div>'
-        st.markdown(html_content, unsafe_allow_html=True)
+        /* 教材排版區塊樣式 */
+        .card { border-radius: 8px; padding: 20px; margin-top: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); line-height: 1.8; font-size: 17px; }
+        .spanish-box { background-color: #eef9f6; border-left: 6px solid #1abc9c; color: #111; font-weight: 500; margin-bottom: 20px; }
+        .chinese-box { background-color: #fffde7; border-left: 6px solid #f1c40f; color: #555; font-style: italic; margin-bottom: 20px; }
+        .vocab-box { background-color: #fdf2f2; border-left: 6px solid #e74c3c; color: #c0392b; margin-bottom: 20px; }
+        .grammar-box { background-color: #f4f6f7; border-left: 6px solid #7f8c8d; color: #2c3e50; }
+        
+        /* 重點單字粗體與亮底 */
+        strong { font-weight: bold; color: #d35400; background-color: #ffeaa7; padding: 2px 4px; border-radius: 4px; }
+        
+        /* 語音控制區 */
+        .audio-controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .audio-btn { flex: 1; min-width: 150px; background-color: #34495e; color: white; border: none; padding: 10px; border-radius: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .audio-btn:hover { background-color: #2c3e50; }
+        
+        #loading { display: none; text-align: center; font-weight: bold; color: #e74c3c; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🇪🇸 西語 2.5 Flash 旗艦家教</h1>
+        
+        <div class="control-panel">
+            <form id="generator-form">
+                <div class="form-group">
+                    <label for="topic">請輸入想練習的實用主題：</label>
+                    <input type="text" id="topic" name="topic" placeholder="例如：在仙台居酒屋點餐、與朋友聊聊假期、4歲小孩基礎西文..." required>
+                </div>
+                
+                <div class="form-group">
+                    <label>口音與語系設定：</label>
+                    <select id="accent-select">
+                        <option value="es-ES">🇪🇸 西班牙本土口音 (Castellano)</option>
+                        <option value="es-MX">🇲🇽 墨西哥口音 (Mexicano)</option>
+                        <option value="es-US">🇺🇸 美國地區西語</option>
+                        <option value="es-AR">🇦🇷 阿根廷口音 (Rioplatense)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="speed">調整語速 (0.5x - 1.5x)：</label>
+                    <div class="slider-container">
+                        <input type="range" id="speed" name="speed" min="0.5" max="1.5" step="0.1" value="0.9">
+                        <span id="speed-val">0.9x</span>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn" id="submit-btn">🪄 生成客製化教材</button>
+            </form>
+        </div>
+
+        <div id="loading">⏳ 老師正在努力撰寫精華教材（固定 250 字），請稍候...</div>
+        <div id="result-area"></div>
+    </div>
+
+    <script>
+        // 語速滑桿數值即時更新
+        document.getElementById('speed').addEventListener('input', function(e) {
+            document.getElementById('speed-val').innerText = e.target.value + 'x';
+        });
+
+        // 表單提交與 AJAX 請求
+        document.getElementById('generator-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('submit-btn');
+            const loading = document.getElementById('loading');
+            const resultArea = document.getElementById('result-area');
+            const topic = document.getElementById('topic').value;
+
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            resultArea.innerHTML = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('topic', topic);
+
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // 渲染漂亮的區塊化卡片
+                    resultArea.innerHTML = `
+                        <div class="audio-controls">
+                            <button class="audio-btn" onclick="playLesson('charA')">🗣️ 角色 A 朗讀 (低音調)</button>
+                            <button class="audio-btn" onclick="playLesson('charB')">🗣️ 角色 B 朗讀 (高音調)</button>
+                            <button class="audio-btn" style="background-color:#7f8c8d;" onclick="window.speechSynthesis.cancel()">⏹️ 停止播放</button>
+                        </div>
+                        <div class="card spanish-box"><h3>✨ 西文原文 (Texto)</h3><p id="spanish-content">${data.spanish}</p></div>
+                        <div class="card chinese-box"><h3>💡 中文翻譯 (Traducción)</h3><p>${data.chinese}</p></div>
+                        <div class="card vocab-box"><h3>📌 重要單字 (Vocabulario)</h3><p>${data.vocab}</p></div>
+                        <div class="card grammar-box"><h3>📝 文法解析 (Gramática)</h3><p>${data.grammar}</p></div>
+                    `;
+                    // 將隱藏的原文供語音包讀取（已移除 Markdown 符號）
+                    window.rawSpanishText = data.raw_spanish;
+                } else {
+                    resultArea.innerHTML = `<p style="color:red;">❌ 錯誤：${data.message}</p>`;
+                }
+            } catch (err) {
+                resultArea.innerHTML = `<p style="color:red;">❌ 連線失敗，請檢查網路或 API Key。</p>`;
+            } finally {
+                submitBtn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+
+        // 核心語音合成優化功能（過濾星號、切換角色與口音）
+        function playLesson(character) {
+            const synth = window.speechSynthesis;
+            if (!window.rawSpanishText) return;
+            
+            // 安全解鎖：防止重複播放疊音
+            synth.cancel();
+
+            // 1. 純淨化文字：過濾掉任何可能殘留的 ** 或星號
+            let cleanText = window.rawSpanishText.replace(/\\*/g, '');
+
+            const msg = new SpeechSynthesisUtterance(cleanText);
+            
+            // 2. 口音設定：動態抓取選單中的國家代碼 (es-ES, es-MX 等)
+            const selectedLang = document.getElementById('accent-select').value;
+            msg.lang = selectedLang;
+
+            // 智慧尋找對應口音的內建語音包（部分瀏覽器支援）
+            const voices = synth.getVoices();
+            const matchedVoice = voices.find(v => v.lang.includes(selectedLang));
+            if (matchedVoice) {
+                msg.voice = matchedVoice;
+            }
+
+            // 3. 語速控制
+            const speed = document.getElementById('speed').value;
+            msg.rate = parseFloat(speed);
+
+            // 4. 雙角色聲音模擬 (透過調整音調 Pitch 區隔)
+            if (character === 'charA') {
+                msg.pitch = 0.8; // 渾厚低沉音（適合模擬男聲或慢速澄清音）
+            } else if (character === 'charB') {
+                msg.pitch = 1.3; // 輕快高昂音（適合模擬女聲或日常對話感）
+            }
+
+            synth.speak(msg);
+        }
+
+        // 讓部分瀏覽器提前加載語音包
+        window.speechSynthesis.getVoices();
+    </script>
+</body>
+</html>
+"""
+
+@app.get("/")
+def read_root():
+    return HTMLResponse(content=html_content)
+
+@app.get("/api/healthcheck")
+def healthcheck():
+    return {"status": "ok", "model": "gemini-2.5-flash"}
+
+@app.post("/api/generate")
+def generate_lesson(topic: str = Form(...)):
+    # 建立強大且格式嚴格的 250 字 Prompt 指令
+    prompt = f"""
+    你是最溫柔、專業的西班牙語老師。請針對主題「{topic}」，為 A2-B1 等級的學生設計一份實用教材。
+    請嚴格遵守以下格式規範，不要自創額外的標籤，字數必須剛好固定在 250 字左右：
+
+    [SPANISH]
+    這裡寫西班牙文小短文或雙人對話（如果是對話，請明確寫出角色名字如 Juan:, Maria:）。
+    請將需要學生注意的「重要單字或片語」用 Markdown 的粗體標籤 ** 包裹起來，例如：**artesanía**。
+
+    [CHINESE]
+    這裡寫整篇西班牙文的「繁體中文」翻譯。
+
+    [VOCAB]
+    列出短文中被加粗的重要單字，格式為：**單字** (中文解釋)。每個單字換行。
+
+    [GRAMMAR]
+    列出 1-2 個實用的文法或句型重點解析。
+    """
     
-    # 筆記區
-    st.markdown('<div class="note-container">', unsafe_allow_html=True)
-    for tag, key, css in [('VOCAB', 'VOCAB', 'tag-v'), ('GRAMMAR', 'GRAMMAR', 'tag-g')]:
-        items = [i.strip() for i in data[key].split('\n') if i.strip()]
-        for it in items:
-            clean_it = it.replace("**", "<strong>").replace("**", "</strong>")
-            st.markdown(f'<div class="note-row"><div class="{css}">{tag}</div><div class="note-text">{clean_it}</div></div>', unsafe_allow_html=True)
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    try:
+        # 使用你已經成功打通的 2.5 Flash 引擎
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        text = response.text
+
+        # 進行精準的區塊結構切分
+        spanish_section = ""
+        chinese_section = ""
+        vocab_section = ""
+        grammar_section = ""
+
+        if "[SPANISH]" in text and "[CHINESE]" in text and "[VOCAB]" in text and "[GRAMMAR]" in text:
+            parts = text.split("[SPANISH]")[1].split("[CHINESE]")
+            spanish_section = parts[0].strip()
+            
+            parts = parts[1].split("[VOCAB]")
+            chinese_section = parts[0].strip()
+            
+            parts = parts[1].split("[GRAMMAR]")
+            vocab_section = parts[0].strip()
+            grammar_section = parts[1].strip()
+        else:
+            # 防呆降級處理
+            spanish_section = text
+            chinese_section = "教材格式生成不夠完美，請再點選一次生成。"
+
+        # 為 HTML 顯示保留 Markdown 粗體語法 (將 ** 轉成 HTML 的 <strong>)
+        html_spanish = spanish_section.replace("\n", "<br>").replace("**", "<strong>", 1).replace("**", "</strong>")
+        while "**" in html_spanish:
+            html_spanish = html_spanish.replace("**", "<strong>", 1).replace("**", "</strong>", 1)
+
+        html_vocab = vocab_section.replace("\n", "<br>").replace("**", "<strong>", 1).replace("**", "</strong>")
+        while "**" in html_vocab:
+            html_vocab = html_vocab.replace("**", "<strong>", 1).replace("**", "</strong>", 1)
+
+        # 創造一份完全乾淨、沒有 ** 星號的純文字，專門給語音朗讀使用
+        raw_spanish_text = spanish_section.replace("**", "")
+
+        return {
+            "status": "success",
+            "spanish": html_spanish,
+            "chinese": chinese_section.replace("\n", "<br>"),
+            "vocab": html_vocab,
+            "grammar": grammar_section.replace("\n", "<br>"),
+            "raw_spanish": raw_spanish_text
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
